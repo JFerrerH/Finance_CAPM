@@ -46,7 +46,7 @@ data_indice['Monthly_Return_Index'] = data_indice["Close"].pct_change()
 data = data_accion.join(data_indice['Monthly_Return_Index']).dropna()
 
 # Display Data
-tabs = st.tabs(["Stock Data", "Market Data", "Regression Analysis", "CAPM Model"])
+tabs = st.tabs(["CAPM Model","Regression Analysis","Stock Data", "Market Data"])
 
 with tabs[0]:
     st.write("### Stock Data")
@@ -88,7 +88,7 @@ CAPM = (Rf * 100) + (beta_daily_return_indice * ((Rm - Rf) * 100))
 
 with tabs[3]:
     st.write("### CAPM Model Calculation")
-    st.write(f"Risk-Free Rate (10Y US Bond): {Rf*100:.2f}%")
+    st.write(f"Risk-Free Rate ({bond_ticker}): {Rf*100:.2f}%")
     st.write(f"Expected Market Return: {Rm*100:.2f}%")
     st.write(f"Calculated CAPM Expected Return for {ticker_accion}: **{CAPM:.2f}%**")
     
@@ -108,7 +108,7 @@ with tabs[3]:
     plt.axhline(y=Rf*100, color="gray", linestyle="--", linewidth=1)
     plt.axvline(x=1, color="gray", linestyle="--", linewidth=1, label="Market Beta = 1")
     plt.legend()
-    plt.grid()
+    plt.grid(False)
     st.pyplot(fig)
 
 
