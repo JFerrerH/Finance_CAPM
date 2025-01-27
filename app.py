@@ -48,11 +48,11 @@ data = data_accion.join(data_indice['Monthly_Return_Index']).dropna()
 # Display Data
 tabs = st.tabs(["CAPM Model","Regression Analysis","Stock Data", "Market Data"])
 
-with tabs[0]:
+with tabs[2]:
     st.write("### Stock Data")
     st.dataframe(data_accion[['Close', 'Monthly_Return_Stock']].dropna())
 
-with tabs[1]:
+with tabs[3]:
     st.write("### Market Index Data")
     st.dataframe(data_indice[['Close', 'Monthly_Return_Index']].dropna())
 
@@ -65,7 +65,7 @@ intercept, beta_daily_return_indice = lm.params
 
 y_pred = beta_daily_return_indice * X['Monthly_Return_Index'] + intercept
 
-with tabs[2]:
+with tabs[1]:
     st.write("### Regression Analysis")
     st.write(f"Beta (β) of {ticker_accion}: {beta_daily_return_indice:.2f}")
     st.write(f"Correlation: {correlation:.2f}")
@@ -86,7 +86,7 @@ Rf = Rf_data["Close"].iloc[-1] / 100  # Convert percentage to decimal
 Rm = ((1 + data['Monthly_Return_Index'].mean())**12) - 1  # Annualized Market Return
 CAPM = (Rf * 100) + (beta_daily_return_indice * ((Rm - Rf) * 100))
 
-with tabs[3]:
+with tabs[0]:
     st.write("### CAPM Model Calculation")
     st.write(f"Risk-Free Rate ({bond_ticker}): {Rf*100:.2f}%")
     st.write(f"Expected Market Return: {Rm*100:.2f}%")
