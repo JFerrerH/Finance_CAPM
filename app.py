@@ -234,5 +234,5 @@ with st.tabs(["Fair Value Estimations"])[0]:
         st.write("Sector P/E (used):", sector_pe)
         st.write("Dividend Rate:", dividend)
         st.write("Required Return (CAPM):", required_return)
-        st.write("Free Cash Flow (Annualized):", fcf * 4 if fcf else None)
+        st.write("Free Cash Flow (Annualized):", fcf if fcf else None)
         st.write("Shares Outstanding:", shares_outstanding)
