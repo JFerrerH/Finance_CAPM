@@ -37,45 +37,30 @@ def get_sector_pe(ticker, api_key):
         st.warning(f"Error fetching sector P/E: {e}")
     return None
 
-# === CAGR 5 yr ===
-def calculate_5yr_ebitda_per_share_cagr(ticker):
+# === Revenue CAGR 5 yr ===
+def calculate_5yr_revenue_cagr(ticker):
     try:
         stock = yf.Ticker(ticker)
+        income_stmt = stock.income_stmt
+        revenue_series = income_stmt.loc["Total Revenue"].dropna()
 
-        # Pull EBITDA over time
-        financials = stock.financials
-        ebitda_series = financials.loc["EBITDA"].dropna()
-
-        # Pull shares outstanding over time (we'll assume constant for now)
-        info = stock.get_info()
-        shares_outstanding = info.get("sharesOutstanding", None)
-
-        if not shares_outstanding or shares_outstanding <= 0:
+        if len(revenue_series) < 2:
             return None
 
-        # Convert EBITDA to per-share basis
-        ebitda_per_share = ebitda_series / shares_outstanding
+        rev_start = revenue_series.iloc[-1]
+        rev_end = revenue_series.iloc[0]
 
-        # Drop missing or invalid data
-        ebitda_per_share = ebitda_per_share.dropna()
-
-        # Make sure we have at least two valid years
-        if len(ebitda_per_share) < 2:
+        if rev_start <= 0 or rev_end <= 0:
             return None
 
-        eps_start = ebitda_per_share.iloc[-1]
-        eps_end = ebitda_per_share.iloc[0]
-
-        if eps_start <= 0 or eps_end <= 0:
-            return None
-
-        n_years = len(ebitda_per_share)
-        cagr = (eps_end / eps_start) ** (1 / n_years) - 1
+        n_years = len(revenue_series)
+        cagr = (rev_end / rev_start) ** (1 / n_years) - 1
         return cagr
-
+    
     except Exception as e:
-        print(f"Error calculating EBITDA per share CAGR: {e}")
+        print("Error calculating revenue CAGR:", e)
         return None
+
 
 
 # === Clean and download functions ===
@@ -264,7 +249,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
             st.warning(f"⚠️ DCF calculation failed: {e}")
         
     # === Peter Lynch Fair Value Calculation ===
-    growth_rate = calculate_5yr_ebitda_per_share_cagr(ticker_accion)
+    growth_rate = calculate_5yr_revenue_cagr(ticker_accion)
     lynch_fair_value = None
 
     st.write("🔍 EPS:", eps)
@@ -278,7 +263,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
         if growth_rate is not None:
             lynch_fair_value = eps * growth_rate * 100  # PEG = 1 → P/E = Growth%
-            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+            st.write(f"**Peter Lynch Fair Value (Revenue CAGR):** ${lynch_fair_value:.2f}")
         else:
             st.write("Peter Lynch Method: Not applicable (growth rate out of range).")
     else:
