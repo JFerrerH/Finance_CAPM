@@ -36,7 +36,7 @@ def get_sector_pe(ticker, api_key):
             return None
 
         sector = profile_resp[0].get("sector")
-        st.write("🧩 Sector Found:", sector)
+        st.write("Sector:", sector)
 
         if not sector:
             return None
@@ -46,7 +46,7 @@ def get_sector_pe(ticker, api_key):
         sector_resp = requests.get(sector_url).json()
 
         if isinstance(sector_resp, dict) and "Error Message" in sector_resp:
-            st.warning("⚠️ Sector P/E data not available on your current FMP plan. Using fallback.")
+            #st.warning("⚠️ Sector P/E data not available on your current FMP plan. Using fallback.")
             return SECTOR_PE_FALLBACK.get(sector, 25)
 
         if not isinstance(sector_resp, list):
@@ -224,7 +224,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
     api_key = st.secrets["fmp"]["api_key"]
     sector_pe = get_sector_pe(ticker_accion, api_key)
-    st.write(sector_pe)
+    
     if not sector_pe or sector_pe <= 0:
         sector_pe = 25
 
