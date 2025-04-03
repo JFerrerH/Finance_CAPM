@@ -248,29 +248,39 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
         except Exception as e:
             st.warning(f"⚠️ DCF calculation failed: {e}")
-       
-    # === Peter Lynch Fair Value Calculation ===
+    
+    st.subheader("📊 Estimated Fair Values:")  
+    # === Peter Lynch Fair Value ===
     fmp_df = get_fmp_income_statement(ticker_accion, api_key)
+
+    lynch_fair_value = None
+    growth_rate = None
 
     if fmp_df is not None and eps:
         growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
-        st.write("5 years Firm Growth rate:", growth_rate)
+
         if growth_rate:
-            # Clamp to Peter Lynch rules
-            growth_rate = min(max(growth_rate, 0.05), 0.25)
-            lynch_fair_value = eps * growth_rate * 100  # To percent
-            
-            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
-            st.caption(f"📈 Based on 5-year EBITDA CAGR: {growth_rate:.2%}")
+            st.write("📈 5-Year EBITDA CAGR:", growth_rate)
+
+            if growth_rate < 0.05:
+                st.warning("⚠️ Peter Lynch Fair Value: Not applicable — firm does not meet growth criteria (CAGR < 5%).")
+            elif 0.05 <= growth_rate < 0.10:
+                lynch_fair_value = eps * growth_rate * 100
+                st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+                st.caption(f"⚠️ Moderate-growth stock. PEG=1 applied conservatively (CAGR: {growth_rate:.2%}).")
+            else:
+                # Clamp at 25% max
+                clamped_growth = min(growth_rate, 0.25)
+                lynch_fair_value = eps * clamped_growth * 100
+                st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+                st.caption(f"✅ Based on 5-year EBITDA CAGR: {clamped_growth:.2%}")
         else:
-            st.write("Peter Lynch Fair Value: Not enough valid EBITDA data.")
+            st.warning("⚠️ Unable to calculate Peter Lynch Fair Value: Not enough valid EBITDA data.")
     else:
-        st.write("Peter Lynch Fair Value: Missing EPS or financial data.")
-
-
-       
+     st.warning("⚠️ Peter Lynch Fair Value unavailable — missing EPS or FMP data.")
+    
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
-    st.subheader("📊 Estimated Fair Values:")
+    
     st.write(f"**P/E Method:** ${pe_fair_price:.2f}" if pe_fair_price else "P/E Method: Not enough data.")
     st.write(f"**DDM Method:** ${ddm_price:.2f}" if ddm_price else "DDM Method: Not applicable.")
     st.write(f"**DCF Method:** ${dcf_price:.2f}" if dcf_price else "DCF Method: Not enough data.")
