@@ -142,53 +142,53 @@ if __name__ == "__main__":
         st.dataframe(data_indice[['Close', 'Monthly_Return_Index']].dropna())
 
 
-# with st.tabs[5]:
-#      st.write("### Fair Price Estimations for", ticker_accion)
+    with st.tabs[5]:
+        st.write("### Fair Price Estimations for", ticker_accion)
 
-    # stock = yf.Ticker(ticker_accion)
-    # info = stock.info
+        stock = yf.Ticker(ticker_accion)
+        info = stock.info
 
-    # current_price = info.get("currentPrice", None)
-    # eps = info.get("trailingEps", None)
-    # pe_ratio = info.get("trailingPE", None)
-    # dividend = info.get("dividendRate", 0)
-    # dividend_growth = 0.05
-    # required_return = CAPM/100
-    # fcf = info.get("freeCashflow", None)
-    # shares_outstanding = info.get("sharesOutstanding", 1)
+        current_price = info.get("currentPrice", None)
+        eps = info.get("trailingEps", None)
+        pe_ratio = info.get("trailingPE", None)
+        dividend = info.get("dividendRate", 0)
+        dividend_growth = 0.05
+        required_return = CAPM/100
+        fcf = info.get("freeCashflow", None)
+        shares_outstanding = info.get("sharesOutstanding", 1)
 
-    # st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
+        st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
 
-    # # P/E Valuation
-    # industry_pe = 15  # You can replace this with API-based value later
-    # pe_fair_price = eps * industry_pe if eps else None
+        # P/E Valuation
+        industry_pe = 15  # You can replace this with API-based value later
+        pe_fair_price = eps * industry_pe if eps else None
 
-    # # DDM Valuation
-    # ddm_price = None
-    # if dividend > 0:
-    #     try:
-    #         ddm_price = dividend * (1 + dividend_growth) / (required_return - dividend_growth)
-    #     except ZeroDivisionError:
-    #         pass
+        # DDM Valuation
+        ddm_price = None
+        if dividend > 0:
+            try:
+                ddm_price = dividend * (1 + dividend_growth) / (required_return - dividend_growth)
+            except ZeroDivisionError:
+                pass
 
-    # # Basic DCF Valuation
-    # dcf_price = None
-    # if fcf and fcf > 0:
-    #     try:
-    #         terminal_value = (fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
-    #         dcf_price = terminal_value / shares_outstanding
-    #     except ZeroDivisionError:
-    #         pass
+        # Basic DCF Valuation
+        dcf_price = None
+        if fcf and fcf > 0:
+            try:
+                terminal_value = (fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
+                dcf_price = terminal_value / shares_outstanding
+            except ZeroDivisionError:
+             pass
 
-    # st.subheader("📊 Estimated Fair Values:")
-    # if pe_fair_price: st.write(f"**P/E Method:** ${pe_fair_price:.2f}")
-    # else: st.write("P/E Method: Not enough data.")
+        st.subheader("📊 Estimated Fair Values:")
+        if pe_fair_price: st.write(f"**P/E Method:** ${pe_fair_price:.2f}")
+        else: st.write("P/E Method: Not enough data.")
     
-    # if ddm_price: st.write(f"**DDM Method:** ${ddm_price:.2f}")
-    # else: st.write("DDM Method: Not applicable (no dividends or error).")
+        if ddm_price: st.write(f"**DDM Method:** ${ddm_price:.2f}")
+        else: st.write("DDM Method: Not applicable (no dividends or error).")
     
-    # if dcf_price: st.write(f"**DCF Method:** ${dcf_price:.2f}")
-    # else: st.write("DCF Method: Not enough data.")
+        if dcf_price: st.write(f"**DCF Method:** ${dcf_price:.2f}")
+        else: st.write("DCF Method: Not enough data.")
 
 
 
