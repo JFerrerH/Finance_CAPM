@@ -37,7 +37,19 @@ def get_sector_pe(ticker, api_key):
         st.warning(f"Error fetching sector P/E: {e}")
     return None
 
-
+# === CAGR 5 yr ===
+def calculate_5yr_ebitda_cagr(ticker):
+    stock = yf.Ticker(ticker)
+    financials = stock.financials
+    ebitda = financials.loc['EBITDA']
+    
+    if len(ebitda) >= 5:
+        ebitda_5yrs_ago = ebitda[-1]
+        ebitda_current = ebitda[0]
+        cagr = (ebitda_current / ebitda_5yrs_ago) ** (1/5) - 1
+        return cagr
+    else:
+        return None
 # === Clean and download functions ===
 def clean_column_names(df):
     if isinstance(df.columns, pd.MultiIndex):
@@ -222,6 +234,25 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
         except Exception as e:
             st.warning(f"⚠️ DCF calculation failed: {e}")
+        
+    # Peter Lynch formula
+    growth_rate = calculate_5yr_ebitda_cagr(ticker_accion)
+    if eps and growth_rate:
+        # Apply caps and floors to the growth rate
+        if growth_rate > 0.25:
+         growth_rate = 0.25
+        elif growth_rate < 0.05:
+            growth_rate = None  # Not applicable as per Peter Lynch methodology
+
+        if growth_rate:
+            lynch_fair_value = eps * growth_rate * 100  # Convert to percentage
+            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+        else:
+            lynch_fair_value = None
+            st.write("Peter Lynch Method: Not applicable (growth rate out of range).")
+    else:
+        lynch_fair_value = None
+        st.write("Insufficient data to calculate Peter Lynch Fair Value.")
 
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
     st.subheader("📊 Estimated Fair Values:")
@@ -236,3 +267,4 @@ with st.tabs(["Fair Value Estimations"])[0]:
         st.write("Required Return (CAPM):", required_return)
         st.write("Free Cash Flow (Annualized):", fcf if fcf else None)
         st.write("Shares Outstanding:", shares_outstanding)
+    
