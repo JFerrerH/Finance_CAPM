@@ -253,7 +253,8 @@ with st.tabs(["Fair Value Estimations"])[0]:
     else:
         lynch_fair_value = None
         st.write("Insufficient data to calculate Peter Lynch Fair Value.")
-
+        
+    st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
     st.subheader("📊 Estimated Fair Values:")
     st.write(f"**P/E Method:** ${pe_fair_price:.2f}" if pe_fair_price else "P/E Method: Not enough data.")
