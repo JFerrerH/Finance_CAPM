@@ -248,18 +248,18 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
         except Exception as e:
             st.warning(f"⚠️ DCF calculation failed: {e}")
-        
+       
     # === Peter Lynch Fair Value Calculation ===
     fmp_df = get_fmp_income_statement(ticker_accion, api_key)
 
     if fmp_df is not None and eps:
         growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
-
+        st.write("5 years Firm Growth rate:", growth_rate)
         if growth_rate:
             # Clamp to Peter Lynch rules
             growth_rate = min(max(growth_rate, 0.05), 0.25)
             lynch_fair_value = eps * growth_rate * 100  # To percent
-
+            
             st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
             st.caption(f"📈 Based on 5-year EBITDA CAGR: {growth_rate:.2%}")
         else:
