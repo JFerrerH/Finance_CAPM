@@ -8,38 +8,33 @@ import statsmodels.api as sm
 import datetime
 import requests
 
-# === Cached function to fetch industry P/E from FMP ===
+# === Cached function to fetch Sector P/E from FMP ===
+
 @st.cache_data(show_spinner=False)
-def get_industry_pe(ticker, api_key):
+def get_sector_pe(ticker, api_key):
     try:
-        # Step 1: Get industry
+        # Get sector from company profile
         profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
         profile_resp = requests.get(profile_url).json()
-
-        if not isinstance(profile_resp, list) or not profile_resp:
-            st.warning(f"No profile data for {ticker}.")
+        if not profile_resp or not isinstance(profile_resp, list):
             return None
 
-        industry = profile_resp[0].get("industry")
-        if not industry:
-            st.warning(f"No industry info found for {ticker}.")
+        sector = profile_resp[0].get("sector")
+        if not sector:
             return None
 
-        # Step 2: Get industry-level P/E ratios
-        ratios_url = f"https://financialmodelingprep.com/api/v4/ratios-ttm-industry?apikey={api_key}"
-        ratios_resp = requests.get(ratios_url).json()
-        st.write(ratios_resp)##################
-        if not isinstance(ratios_resp, list):
-            st.warning("Failed to retrieve industry ratios.")
+        # Get sector-level P/E ratios
+        sector_url = f"https://financialmodelingprep.com/api/v4/sector_price_earning_ratio?apikey={api_key}"
+        sector_resp = requests.get(sector_url).json()
+        if not isinstance(sector_resp, list):
             return None
 
-        for entry in ratios_resp:
-            if entry.get("industry", "").lower() == industry.lower():
+        for entry in sector_resp:
+            if entry.get("sector") == sector:
                 return entry.get("peRatioTTM", None)
-
+    
     except Exception as e:
-        st.warning(f"Error fetching industry P/E: {e}")
-
+        st.warning(f"Error fetching sector P/E: {e}")
     return None
 
 
@@ -174,11 +169,11 @@ with st.tabs(["Fair Value Estimations"])[0]:
     shares_outstanding = info.get("sharesOutstanding", 1)
 
     api_key = st.secrets["fmp"]["api_key"]
-    industry_pe = get_industry_pe(ticker_accion, api_key)
-    if not industry_pe or industry_pe <= 0:
-        industry_pe = 25
+    sector_pe = get_sector_pe(ticker_accion, api_key)
+    if not sector_pe or sector_pe <= 0:
+        sector_pe = 25
 
-    pe_fair_price = eps * industry_pe if eps else None
+    pe_fair_price = eps * sector_pe if eps else None
 
     ddm_price = None
     if dividend > 1 and required_return > dividend_growth:
@@ -217,7 +212,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
             total_value = sum(fcf_list) + discounted_terminal_value
             dcf_price = total_value / shares_outstanding
-            
+
             st.write("Annual FCF:", annual_fcf)
             st.write("Total Firm Value:", total_value)
 
@@ -232,7 +227,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
     with st.expander("🔍 Show Raw Inputs"):
         st.write("EPS:", eps)
-        st.write("Industry P/E (used):", industry_pe)
+        st.write("Sector P/E (used):", sector_pe)
         st.write("Dividend Rate:", dividend)
         st.write("Required Return (CAPM):", required_return)
         st.write("Free Cash Flow (Annualized):", fcf * 4 if fcf else None)
