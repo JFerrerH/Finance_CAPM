@@ -10,32 +10,60 @@ import requests
 
 # === Cached function to fetch Sector P/E from FMP ===
 
+SECTOR_PE_FALLBACK = {
+    "Technology": 25,
+    "Consumer Defensive": 22,
+    "Healthcare": 24,
+    "Financial Services": 14,
+    "Energy": 12,
+    "Industrials": 17,
+    "Consumer Cyclical": 20,
+    "Communication Services": 18,
+    "Utilities": 16,
+    "Real Estate": 19,
+    "Materials": 15
+}
+
 @st.cache_data(show_spinner=False)
 def get_sector_pe(ticker, api_key):
     try:
-        # Get sector from company profile
+        
         profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
         profile_resp = requests.get(profile_url).json()
+
         if not profile_resp or not isinstance(profile_resp, list):
+            st.warning("⚠️ No profile data returned.")
             return None
 
         sector = profile_resp[0].get("sector")
+        st.write("🧩 Sector Found:", sector)
+
         if not sector:
             return None
 
-        # Get sector-level P/E ratios
+        # Try API first
         sector_url = f"https://financialmodelingprep.com/api/v4/sector_price_earning_ratio?apikey={api_key}"
         sector_resp = requests.get(sector_url).json()
+
+        if isinstance(sector_resp, dict) and "Error Message" in sector_resp:
+            st.warning("⚠️ Sector P/E data not available on your current FMP plan. Using fallback.")
+            return SECTOR_PE_FALLBACK.get(sector, 25)
+
         if not isinstance(sector_resp, list):
-            return None
+            st.warning("⚠️ Unexpected response structure for sector P/E.")
+            return SECTOR_PE_FALLBACK.get(sector, 25)
 
         for entry in sector_resp:
-            if entry.get("sector") == sector:
-                return entry.get("peRatioTTM", None)
-    
+            if entry.get("sector", "").lower() == sector.lower():
+                return entry.get("peRatioTTM")
+
+        # If sector not matched
+        st.warning("⚠️ Sector not found in P/E list. Using fallback.")
+        return SECTOR_PE_FALLBACK.get(sector, 25)
+
     except Exception as e:
         st.warning(f"Error fetching sector P/E: {e}")
-    return None
+        return None
 
 # 5 years EBITDA
 def get_fmp_income_statement(ticker, api_key):
@@ -260,7 +288,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
         growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
 
         if growth_rate:
-            
+
             if growth_rate < 0.05:
                 st.warning("⚠️ Peter Lynch Fair Value: Not applicable — firm does not meet growth criteria (CAGR < 5%).")
             elif 0.05 <= growth_rate < 0.10:
