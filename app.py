@@ -12,22 +12,36 @@ import requests
 @st.cache_data(show_spinner=False)
 def get_industry_pe(ticker, api_key):
     try:
+        # Step 1: Get industry
         profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
         profile_resp = requests.get(profile_url).json()
-        if not profile_resp:
+
+        if not isinstance(profile_resp, list) or not profile_resp:
+            st.warning(f"No profile data for {ticker}.")
             return None
 
         industry = profile_resp[0].get("industry")
+        if not industry:
+            st.warning(f"No industry info found for {ticker}.")
+            return None
 
+        # Step 2: Get industry-level P/E ratios
         ratios_url = f"https://financialmodelingprep.com/api/v4/ratios-ttm-industry?apikey={api_key}"
         ratios_resp = requests.get(ratios_url).json()
 
+        if not isinstance(ratios_resp, list):
+            st.warning("Failed to retrieve industry ratios.")
+            return None
+
         for entry in ratios_resp:
-            if entry["industry"].lower() == industry.lower():
+            if entry.get("industry", "").lower() == industry.lower():
                 return entry.get("peRatioTTM", None)
+
     except Exception as e:
         st.warning(f"Error fetching industry P/E: {e}")
+
     return None
+
 
 # === Clean and download functions ===
 def clean_column_names(df):
