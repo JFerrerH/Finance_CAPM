@@ -239,6 +239,9 @@ with st.tabs(["Fair Value Estimations"])[0]:
     growth_rate = calculate_5yr_ebitda_cagr(ticker_accion)
     lynch_fair_value = None
 
+    st.write("🔍 EPS:", eps)
+    st.write("🔍 Growth rate:", growth_rate)
+
     if eps and growth_rate is not None:
         if growth_rate > 0.25:
             growth_rate = 0.25
