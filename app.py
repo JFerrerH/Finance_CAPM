@@ -90,11 +90,6 @@ if __name__ == "__main__":
     y_pred = beta_daily_return_indice * X['Monthly_Return_Index'] + intercept
 
 # CAPM Calculation
-    # Rf_data = download_ticker_data(bond_ticker, start_date, today_date, interval)
-    # Rf = Rf_data["Close"].iloc[-1] / 100  # Convert percentage to decimal
-    # Rm = ((1 + data['Monthly_Return_Index'].mean())**12) - 1  # Annualized Market Return
-    # CAPM = (Rf * 100) + (beta_daily_return_indice * ((Rm - Rf) * 100))
-
     try:
         Rf_data = download_ticker_data(bond_ticker, start_date, today_date, interval)
         Rf = Rf_data["Close"].iloc[-1] / 100  # Convert to decimal
@@ -181,7 +176,7 @@ if __name__ == "__main__":
         shares_outstanding = info.get("sharesOutstanding", 1)
 
         # Get industry P/E from FMP
-        api_key = st.secrets["fmp"]["api_key"]  
+        api_key = st.secrets["fmp"]["api_key"] 
         industry_pe = get_industry_pe(ticker_accion, api_key)
 
         if not industry_pe or industry_pe <= 0:
