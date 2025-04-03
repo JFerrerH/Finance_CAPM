@@ -235,19 +235,25 @@ with st.tabs(["Fair Value Estimations"])[0]:
         except Exception as e:
             st.warning(f"⚠️ DCF calculation failed: {e}")
         
-    # Peter Lynch formula
+    # === Peter Lynch Fair Value Calculation ===
     growth_rate = calculate_5yr_ebitda_cagr(ticker_accion)
-    if growth_rate:
-        lynch_fair_value = eps * growth_rate * 100  # Convert to percentage
-    else:
-        lynch_fair_value = None
+    lynch_fair_value = None
 
-    if lynch_fair_value:
-        st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+    if eps and growth_rate is not None:
+        if growth_rate > 0.25:
+            growth_rate = 0.25
+        elif growth_rate < 0.05:
+            growth_rate = None  # Too low, method not applicable
+
+        if growth_rate is not None:
+            lynch_fair_value = eps * growth_rate * 100  # PEG = 1 → P/E = Growth%
+            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+        else:
+            st.write("Peter Lynch Method: Not applicable (growth rate out of range).")
     else:
-        st.write("Peter Lynch Method: Not applicable (growth rate too low or data missing).")
-        
-    st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+        st.write("Insufficient data to calculate Peter Lynch Fair Value.")
+
+       
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
     st.subheader("📊 Estimated Fair Values:")
     st.write(f"**P/E Method:** ${pe_fair_price:.2f}" if pe_fair_price else "P/E Method: Not enough data.")
