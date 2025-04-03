@@ -260,8 +260,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
         growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
 
         if growth_rate:
-            st.write("📈 5-Year EBITDA CAGR:", growth_rate)
-
+            
             if growth_rate < 0.05:
                 st.warning("⚠️ Peter Lynch Fair Value: Not applicable — firm does not meet growth criteria (CAGR < 5%).")
             elif 0.05 <= growth_rate < 0.10:
