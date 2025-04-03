@@ -217,7 +217,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
             total_value = sum(fcf_list) + discounted_terminal_value
             dcf_price = total_value / shares_outstanding
-
+            
             st.write("Annual FCF:", annual_fcf)
             st.write("Total Firm Value:", total_value)
 
