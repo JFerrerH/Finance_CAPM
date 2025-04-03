@@ -39,17 +39,31 @@ def get_sector_pe(ticker, api_key):
 
 # === CAGR 5 yr ===
 def calculate_5yr_ebitda_cagr(ticker):
-    stock = yf.Ticker(ticker)
-    financials = stock.financials
-    ebitda = financials.loc['EBITDA']
-    
-    if len(ebitda) >= 5:
-        ebitda_5yrs_ago = ebitda[-1]
-        ebitda_current = ebitda[0]
-        cagr = (ebitda_current / ebitda_5yrs_ago) ** (1/5) - 1
+    try:
+        stock = yf.Ticker(ticker)
+        financials = stock.financials
+
+        if "EBITDA" not in financials.index:
+            return None
+
+        ebitda_series = financials.loc["EBITDA"].dropna()
+
+        # Ensure we have at least two data points
+        if len(ebitda_series) < 2:
+            return None
+
+        ebitda_current = ebitda_series.iloc[0]
+        ebitda_5yrs_ago = ebitda_series.iloc[-1]
+
+        if ebitda_current <= 0 or ebitda_5yrs_ago <= 0:
+            return None
+
+        cagr = (ebitda_current / ebitda_5yrs_ago) ** (1 / len(ebitda_series)) - 1
         return cagr
-    else:
+    except Exception as e:
+        print("Error calculating EBITDA CAGR:", e)
         return None
+
 # === Clean and download functions ===
 def clean_column_names(df):
     if isinstance(df.columns, pd.MultiIndex):
