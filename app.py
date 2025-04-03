@@ -28,7 +28,7 @@ def get_industry_pe(ticker, api_key):
         # Step 2: Get industry-level P/E ratios
         ratios_url = f"https://financialmodelingprep.com/api/v4/ratios-ttm-industry?apikey={api_key}"
         ratios_resp = requests.get(ratios_url).json()
-
+        st.write(ratios_resp)##################
         if not isinstance(ratios_resp, list):
             st.warning("Failed to retrieve industry ratios.")
             return None
@@ -218,10 +218,8 @@ with st.tabs(["Fair Value Estimations"])[0]:
             total_value = sum(fcf_list) + discounted_terminal_value
             dcf_price = total_value / shares_outstanding
 
-            st.write("✅ Adaptive DCF logic is running")
             st.write("Annual FCF:", annual_fcf)
             st.write("Total Firm Value:", total_value)
-            st.write("DCF Price per Share:", dcf_price)
 
         except Exception as e:
             st.warning(f"⚠️ DCF calculation failed: {e}")
