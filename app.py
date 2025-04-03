@@ -188,7 +188,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
             annual_fcf = fcf
 
             # ⚠️ Sanity check for abnormally high FCF
-            if annual_fcf > 30_000_000_000:
+            if annual_fcf > 80_000_000_000:
                 st.warning("⚠️ FCF seems abnormally high — this may affect DCF accuracy.")
 
             if annual_fcf > 20_000_000_000:
