@@ -38,31 +38,45 @@ def get_sector_pe(ticker, api_key):
     return None
 
 # === CAGR 5 yr ===
-def calculate_5yr_ebitda_cagr(ticker):
+def calculate_5yr_ebitda_per_share_cagr(ticker):
     try:
         stock = yf.Ticker(ticker)
+
+        # Pull EBITDA over time
         financials = stock.financials
-
-        if "EBITDA" not in financials.index:
-            return None
-
         ebitda_series = financials.loc["EBITDA"].dropna()
 
-        # Ensure we have at least two data points
-        if len(ebitda_series) < 2:
+        # Pull shares outstanding over time (we'll assume constant for now)
+        info = stock.get_info()
+        shares_outstanding = info.get("sharesOutstanding", None)
+
+        if not shares_outstanding or shares_outstanding <= 0:
             return None
 
-        ebitda_current = ebitda_series.iloc[0]
-        ebitda_5yrs_ago = ebitda_series.iloc[-1]
+        # Convert EBITDA to per-share basis
+        ebitda_per_share = ebitda_series / shares_outstanding
 
-        if ebitda_current <= 0 or ebitda_5yrs_ago <= 0:
+        # Drop missing or invalid data
+        ebitda_per_share = ebitda_per_share.dropna()
+
+        # Make sure we have at least two valid years
+        if len(ebitda_per_share) < 2:
             return None
 
-        cagr = (ebitda_current / ebitda_5yrs_ago) ** (1 / len(ebitda_series)) - 1
+        eps_start = ebitda_per_share.iloc[-1]
+        eps_end = ebitda_per_share.iloc[0]
+
+        if eps_start <= 0 or eps_end <= 0:
+            return None
+
+        n_years = len(ebitda_per_share)
+        cagr = (eps_end / eps_start) ** (1 / n_years) - 1
         return cagr
+
     except Exception as e:
-        print("Error calculating EBITDA CAGR:", e)
+        print(f"Error calculating EBITDA per share CAGR: {e}")
         return None
+
 
 # === Clean and download functions ===
 def clean_column_names(df):
@@ -250,7 +264,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
             st.warning(f"⚠️ DCF calculation failed: {e}")
         
     # === Peter Lynch Fair Value Calculation ===
-    growth_rate = calculate_5yr_ebitda_cagr(ticker_accion)
+    growth_rate = calculate_5yr_ebitda_per_share_cagr(ticker_accion)
     lynch_fair_value = None
 
     st.write("🔍 EPS:", eps)
