@@ -197,13 +197,41 @@ if __name__ == "__main__":
              pass
 
         dcf_price = None
-        if fcf and fcf > 0:
+        if fcf and fcf > 0 and shares_outstanding > 0:
             try:
                 annual_fcf = fcf * 4
-                terminal_value = (annual_fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
-                dcf_price = terminal_value / shares_outstanding
+
+                # Adaptive logic
+                if annual_fcf > 20_000_000_000:  # Mega cap
+                    short_term_growth = 0.05
+                    terminal_growth = 0.02
+                elif annual_fcf > 5_000_000_000:  # Mature large-cap
+                    short_term_growth = 0.06
+                    terminal_growth = 0.025
+                else:  # Smaller or growing company
+                    short_term_growth = 0.10
+                    terminal_growth = 0.03
+
+                forecast_years = 5
+                discount_rate = required_return
+
+                # Project and discount FCF for forecast period
+                fcf_list = []
+                for year in range(1, forecast_years + 1):
+                    projected_fcf = annual_fcf * (1 + short_term_growth) ** year
+                    discounted_fcf = projected_fcf / (1 + discount_rate) ** year
+                    fcf_list.append(discounted_fcf)
+
+                # Terminal value
+                final_fcf = annual_fcf * (1 + short_term_growth) ** forecast_years
+                terminal_value = final_fcf * (1 + terminal_growth) / (discount_rate - terminal_growth)
+                discounted_terminal_value = terminal_value / (1 + discount_rate) ** forecast_years
+
+                total_value = sum(fcf_list) + discounted_terminal_value
+                dcf_price = total_value / shares_outstanding
             except ZeroDivisionError:
-                pass
+             pass
+
 
         st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
 
