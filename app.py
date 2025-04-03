@@ -47,7 +47,6 @@ if __name__ == "__main__":
     data_accion = download_ticker_data(ticker_accion, start_date, today_date, interval)
     data_indice = download_ticker_data(ticker_indice, start_date, today_date, interval)
 
-    st.write(data_accion,start_date, today_date)
 # Calculate Monthly Returns
     data_accion['Monthly_Return_Stock'] = data_accion["Close"].pct_change()
     data_indice['Monthly_Return_Index'] = data_indice["Close"].pct_change()
@@ -142,7 +141,7 @@ if __name__ == "__main__":
         st.dataframe(data_indice[['Close', 'Monthly_Return_Index']].dropna())
 
 
-    with st.tabs[5]:
+    with st.tabs(["Fair Value Estimations"])[0]:
         st.write("### Fair Price Estimations for", ticker_accion)
 
         stock = yf.Ticker(ticker_accion)
