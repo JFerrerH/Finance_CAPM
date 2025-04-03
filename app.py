@@ -168,7 +168,8 @@ if __name__ == "__main__":
         st.write("### Fair Price Estimations for", ticker_accion.upper())
 
         stock = yf.Ticker(ticker_accion)
-        info = stock.info
+        info = stock.get_info()
+
 
         current_price = info.get("currentPrice")
         eps = info.get("trailingEps")
