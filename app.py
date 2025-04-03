@@ -37,29 +37,30 @@ def get_sector_pe(ticker, api_key):
         st.warning(f"Error fetching sector P/E: {e}")
     return None
 
-# === Revenue CAGR 5 yr ===
-def calculate_5yr_revenue_cagr(ticker):
+# 5 years EBITDA
+def get_fmp_income_statement(ticker, api_key):
+    url = f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}?limit=5&apikey={api_key}"
     try:
-        stock = yf.Ticker(ticker)
-        income_stmt = stock.income_stmt
-        revenue_series = income_stmt.loc["Total Revenue"].dropna()
-
-        if len(revenue_series) < 2:
-            return None
-
-        rev_start = revenue_series.iloc[-1]
-        rev_end = revenue_series.iloc[0]
-
-        if rev_start <= 0 or rev_end <= 0:
-            return None
-
-        n_years = len(revenue_series)
-        cagr = (rev_end / rev_start) ** (1 / n_years) - 1
-        return cagr
-    
+        response = requests.get(url)
+        data = response.json()
+        df = pd.DataFrame(data)
+        return df[["date", "revenue", "ebitda"]].dropna()
     except Exception as e:
-        print("Error calculating revenue CAGR:", e)
+        st.warning(f"Error fetching FMP financials: {e}")
         return None
+
+
+# === Revenue CAGR 5 yr ===
+def calculate_5yr_cagr_from_fmp(df, field):
+    df = df.sort_values("date")
+    start = df[field].iloc[0]
+    end = df[field].iloc[-1]
+    n_years = len(df) - 1
+
+    if start <= 0 or end <= 0 or n_years == 0:
+        return None
+
+    return (end / start) ** (1 / n_years) - 1
 
 
 
@@ -249,25 +250,23 @@ with st.tabs(["Fair Value Estimations"])[0]:
             st.warning(f"⚠️ DCF calculation failed: {e}")
         
     # === Peter Lynch Fair Value Calculation ===
-    growth_rate = calculate_5yr_revenue_cagr(ticker_accion)
-    lynch_fair_value = None
+    fmp_df = get_fmp_income_statement(ticker_accion, api_key)
 
-    st.write("🔍 EPS:", eps)
-    st.write("🔍 Growth rate:", growth_rate)
+    if fmp_df is not None and eps:
+        growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
 
-    if eps and growth_rate is not None:
-        if growth_rate > 0.25:
-            growth_rate = 0.25
-        elif growth_rate < 0.05:
-            growth_rate = None  # Too low, method not applicable
+        if growth_rate:
+            # Clamp to Peter Lynch rules
+            growth_rate = min(max(growth_rate, 0.05), 0.25)
+            lynch_fair_value = eps * growth_rate * 100  # To percent
 
-        if growth_rate is not None:
-            lynch_fair_value = eps * growth_rate * 100  # PEG = 1 → P/E = Growth%
-            st.write(f"**Peter Lynch Fair Value (Revenue CAGR):** ${lynch_fair_value:.2f}")
+            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+            st.caption(f"📈 Based on 5-year EBITDA CAGR: {growth_rate:.2%}")
         else:
-            st.write("Peter Lynch Method: Not applicable (growth rate out of range).")
+            st.write("Peter Lynch Fair Value: Not enough valid EBITDA data.")
     else:
-        st.write("Insufficient data to calculate Peter Lynch Fair Value.")
+        st.write("Peter Lynch Fair Value: Missing EPS or financial data.")
+
 
        
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
