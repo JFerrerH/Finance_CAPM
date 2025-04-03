@@ -224,6 +224,7 @@ with st.tabs(["Fair Value Estimations"])[0]:
 
     api_key = st.secrets["fmp"]["api_key"]
     sector_pe = get_sector_pe(ticker_accion, api_key)
+    st.write(sector_pe)
     if not sector_pe or sector_pe <= 0:
         sector_pe = 25
 
