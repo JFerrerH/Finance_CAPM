@@ -185,7 +185,11 @@ with st.tabs(["Fair Value Estimations"])[0]:
     dcf_price = None
     if fcf and fcf > 0 and shares_outstanding > 0:
         try:
-            annual_fcf = fcf * 4
+            annual_fcf = fcf
+
+            # ⚠️ Sanity check for abnormally high FCF
+            if annual_fcf > 30_000_000_000:
+                st.warning("⚠️ FCF seems abnormally high — this may affect DCF accuracy.")
 
             if annual_fcf > 20_000_000_000:
                 short_term_growth = 0.05
