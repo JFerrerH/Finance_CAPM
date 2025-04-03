@@ -142,52 +142,74 @@ if __name__ == "__main__":
 
 
     with st.tabs(["Fair Value Estimations"])[0]:
-        st.write("### Fair Price Estimations for", ticker_accion)
+        st.write("### Fair Price Estimations for", ticker_accion.upper())
 
         stock = yf.Ticker(ticker_accion)
         info = stock.info
 
-        current_price = info.get("currentPrice", None)
-        eps = info.get("trailingEps", None)
-        pe_ratio = info.get("trailingPE", None)
-        dividend = info.get("dividendRate", 0)
-        dividend_growth = 0.05
-        required_return = CAPM/100
-        fcf = info.get("freeCashflow", None)
+        # Extract financial data
+        current_price = info.get("currentPrice")
+        eps = info.get("trailingEps")
+        pe_ratio = info.get("trailingPE")  # fallback if you want to use company's own P/E
+        dividend = info.get("dividendRate", 0) or 0
+        dividend_growth = 0.05  # Assume 5%
+        required_return = CAPM / 100 if CAPM else 0.10
+        fcf = info.get("freeCashflow", 0)
         shares_outstanding = info.get("sharesOutstanding", 1)
 
         st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
 
-        # P/E Valuation
-        industry_pe = 15  # You can replace this with API-based value later
+        # ⚙️ Assumptions + Safety Checks
+        if not shares_outstanding or shares_outstanding <= 0:
+            shares_outstanding = 1  # Prevent divide by zero
+
+        # ✅ P/E Fair Value
+        industry_pe = 25 if pe_ratio is None else pe_ratio  # Use actual P/E if available
         pe_fair_price = eps * industry_pe if eps else None
 
-        # DDM Valuation
+        # ✅ DDM Fair Value (only if dividend is reasonable)
         ddm_price = None
-        if dividend > 0:
+        if dividend > 0.30:  # skip noise dividends like $0.01
             try:
                 ddm_price = dividend * (1 + dividend_growth) / (required_return - dividend_growth)
             except ZeroDivisionError:
                 pass
 
-        # Basic DCF Valuation
+        # ✅ DCF Fair Value (annualized FCF)
         dcf_price = None
         if fcf and fcf > 0:
             try:
-                terminal_value = (fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
+                annual_fcf = fcf * 4  # yfinance gives trailing 3-month value
+                terminal_value = (annual_fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
                 dcf_price = terminal_value / shares_outstanding
             except ZeroDivisionError:
-             pass
+                pass
 
+        # 📊 Output Fair Value Results
         st.subheader("📊 Estimated Fair Values:")
-        if pe_fair_price: st.write(f"**P/E Method:** ${pe_fair_price:.2f}")
-        else: st.write("P/E Method: Not enough data.")
-    
-        if ddm_price: st.write(f"**DDM Method:** ${ddm_price:.2f}")
-        else: st.write("DDM Method: Not applicable (no dividends or error).")
-    
-        if dcf_price: st.write(f"**DCF Method:** ${dcf_price:.2f}")
-        else: st.write("DCF Method: Not enough data.")
+        if pe_fair_price:
+            st.write(f"**P/E Method:** ${pe_fair_price:.2f}")
+        else:
+            st.write("P/E Method: Not enough data.")
+
+        if ddm_price:
+            st.write(f"**DDM Method:** ${ddm_price:.2f}")
+        else:
+            st.write("DDM Method: Not applicable (low or no dividend).")
+
+        if dcf_price:
+            st.write(f"**DCF Method:** ${dcf_price:.2f}")
+        else:
+            st.write("DCF Method: Not enough data.")
+
+    # Optional debug for transparency
+    with st.expander("🔍 Show Raw Inputs"):
+        st.write("EPS:", eps)
+        st.write("Industry P/E (used):", industry_pe)
+        st.write("Dividend Rate:", dividend)
+        st.write("Required Return (CAPM):", required_return)
+        st.write("Free Cash Flow (Annualized):", fcf * 4 if fcf else None)
+        st.write("Shares Outstanding:", shares_outstanding)
 
 
 
