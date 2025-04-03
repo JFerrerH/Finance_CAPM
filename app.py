@@ -6,8 +6,31 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
 import datetime
+import requests
 
 if __name__ == "__main__": 
+
+    @st.cache_data(show_spinner=False)
+    def get_industry_pe(ticker, api_key):
+        try:
+            # Step 1: Get industry info
+            profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
+            profile_resp = requests.get(profile_url).json()
+            if not profile_resp:
+                return None
+
+            industry = profile_resp[0].get("industry")
+
+            # Step 2: Get P/E by industry
+            ratios_url = f"https://financialmodelingprep.com/api/v4/ratios-ttm-industry?apikey={api_key}"
+            ratios_resp = requests.get(ratios_url).json()
+
+            for entry in ratios_resp:
+                if entry["industry"].lower() == industry.lower():
+                    return entry.get("peRatioTTM", None)
+        except Exception as e:
+            st.warning(f"Error fetching industry P/E: {e}")
+        return None
 
 # Function to clean column names
     def clean_column_names(df):
@@ -147,45 +170,43 @@ if __name__ == "__main__":
         stock = yf.Ticker(ticker_accion)
         info = stock.info
 
-        # Extract financial data
         current_price = info.get("currentPrice")
         eps = info.get("trailingEps")
-        pe_ratio = info.get("trailingPE")  # fallback if you want to use company's own P/E
+        pe_ratio = info.get("trailingPE")
         dividend = info.get("dividendRate", 0) or 0
-        dividend_growth = 0.05  # Assume 5%
+        dividend_growth = 0.05
         required_return = CAPM / 100 if CAPM else 0.10
         fcf = info.get("freeCashflow", 0)
         shares_outstanding = info.get("sharesOutstanding", 1)
 
-        st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
+        # Get industry P/E from FMP
+        api_key = st.secrets["fmp"]["api_key"]  
+        industry_pe = get_industry_pe(ticker_accion, api_key)
 
-        # ⚙️ Assumptions + Safety Checks
-        if not shares_outstanding or shares_outstanding <= 0:
-            shares_outstanding = 1  # Prevent divide by zero
+        if not industry_pe or industry_pe <= 0:
+            industry_pe = 25  # fallback value
 
-        # ✅ P/E Fair Value
-        industry_pe = 25 if pe_ratio is None else pe_ratio  # Use actual P/E if available
+        # Fair Price Calculations
         pe_fair_price = eps * industry_pe if eps else None
 
-        # ✅ DDM Fair Value (only if dividend is reasonable)
         ddm_price = None
-        if dividend > 0.30:  # skip noise dividends like $0.01
+        if dividend > 1 and required_return > dividend_growth:
             try:
                 ddm_price = dividend * (1 + dividend_growth) / (required_return - dividend_growth)
             except ZeroDivisionError:
-                pass
+             pass
 
-        # ✅ DCF Fair Value (annualized FCF)
         dcf_price = None
         if fcf and fcf > 0:
             try:
-                annual_fcf = fcf * 4  # yfinance gives trailing 3-month value
+                annual_fcf = fcf * 4
                 terminal_value = (annual_fcf * (1 + dividend_growth)) / (required_return - dividend_growth)
                 dcf_price = terminal_value / shares_outstanding
             except ZeroDivisionError:
                 pass
 
-        # 📊 Output Fair Value Results
+        st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
+
         st.subheader("📊 Estimated Fair Values:")
         if pe_fair_price:
             st.write(f"**P/E Method:** ${pe_fair_price:.2f}")
@@ -200,7 +221,7 @@ if __name__ == "__main__":
         if dcf_price:
             st.write(f"**DCF Method:** ${dcf_price:.2f}")
         else:
-            st.write("DCF Method: Not enough data.")
+         st.write("DCF Method: Not enough data.")
 
     # Optional debug for transparency
     with st.expander("🔍 Show Raw Inputs"):
