@@ -237,22 +237,15 @@ with st.tabs(["Fair Value Estimations"])[0]:
         
     # Peter Lynch formula
     growth_rate = calculate_5yr_ebitda_cagr(ticker_accion)
-    if eps and growth_rate:
-        # Apply caps and floors to the growth rate
-        if growth_rate > 0.25:
-         growth_rate = 0.25
-        elif growth_rate < 0.05:
-            growth_rate = None  # Not applicable as per Peter Lynch methodology
-
-        if growth_rate:
-            lynch_fair_value = eps * growth_rate * 100  # Convert to percentage
-            st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
-        else:
-            lynch_fair_value = None
-            st.write("Peter Lynch Method: Not applicable (growth rate out of range).")
+    if growth_rate:
+        lynch_fair_value = eps * growth_rate * 100  # Convert to percentage
     else:
         lynch_fair_value = None
-        st.write("Insufficient data to calculate Peter Lynch Fair Value.")
+
+    if lynch_fair_value:
+        st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
+    else:
+        st.write("Peter Lynch Method: Not applicable (growth rate too low or data missing).")
         
     st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
     st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
