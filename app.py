@@ -6,7 +6,10 @@ import pandas as pd
 from utils.data import download_ticker_data, get_stock_info
 from utils.fmp import get_sector_pe, get_fmp_income_statement
 from utils.capm import calculate_capm
-from utils.performance import calculate_performance_metrics, calculate_rolling_beta, calculate_var_cvar
+from utils.performance import (
+    calculate_performance_metrics, calculate_rolling_beta,
+    calculate_var_cvar, calculate_momentum_metrics,
+)
 from utils.montecarlo import run_monte_carlo
 from utils.markowitz import run_efficient_frontier, get_optimal_portfolios
 from utils.fundamentals import parse_fundamentals, BENCHMARKS
@@ -241,6 +244,7 @@ CAPM  = capm["capm_return"]
 perf             = calculate_performance_metrics(data, Rf, beta)
 rolling_beta     = calculate_rolling_beta(data)
 var_results      = calculate_var_cvar(data["Monthly_Return_Stock"].dropna())
+mom_metrics      = calculate_momentum_metrics(data)
 current_price_mc = float(data_accion["Close"].iloc[-1])
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -372,7 +376,7 @@ elif page == "📍  Thesis":
     sector    = (info.get("sector") or "") if info else ""
     s_alpha   = score_alpha(capm)
     s_risk    = score_risk_return(perf)
-    s_mom     = score_momentum(perf, capm)
+    s_mom     = score_momentum(mom_metrics)
     s_fin     = score_financial_health(inc, cf, bal, sector)
     s_val     = score_valuation(current_price, dcf_price, pe_fair, ddm_price)
     s_macro   = score_macro_fit(signals, beta, sector)

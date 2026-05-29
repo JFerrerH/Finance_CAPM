@@ -45,6 +45,31 @@ def calculate_performance_metrics(data, Rf, beta):
     }
 
 
+def calculate_momentum_metrics(data: pd.DataFrame) -> dict:
+    """
+    Short-term relative return: stock vs market over 3M, 6M, and 12M windows.
+    This is the empirically validated momentum factor (Jegadeesh & Titman, 1993) —
+    genuinely distinct from Jensen's alpha, which measures long-run risk-adjusted
+    excess return. A stock can have great historical alpha but a weak near-term trend,
+    or vice versa. Using both without this separation causes double-counting.
+    """
+    stock  = data["Monthly_Return_Stock"].dropna()
+    market = data["Monthly_Return_Index"].dropna()
+    result = {}
+    for n, label in [(3, "3m"), (6, "6m"), (12, "12m")]:
+        if len(stock) >= n and len(market) >= n:
+            s = float((1 + stock.tail(n)).prod() - 1)
+            m = float((1 + market.tail(n)).prod() - 1)
+            result[f"stock_{label}"]  = s
+            result[f"market_{label}"] = m
+            result[f"rel_{label}"]    = s - m
+        else:
+            result[f"stock_{label}"]  = None
+            result[f"market_{label}"] = None
+            result[f"rel_{label}"]    = None
+    return result
+
+
 def calculate_rolling_beta(data, window=12):
     returns = data[["Monthly_Return_Stock", "Monthly_Return_Index"]].dropna()
     betas, dates = [], []

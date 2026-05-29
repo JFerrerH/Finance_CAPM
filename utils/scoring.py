@@ -162,16 +162,44 @@ def score_risk_return(perf: dict) -> tuple[int, str]:
     else:                              return 1, detail
 
 
-def score_momentum(perf: dict, capm: dict) -> tuple[int, str]:
-    """Annualised return excess vs market return."""
-    ann_ret = perf.get("ann_return") or 0.0
-    mkt_ret = capm.get("Rm") or 0.0
-    excess  = ann_ret - mkt_ret
-    if   excess >  0.10: return 5, f"Beating market by {excess:+.1%}"
-    elif excess >  0.05: return 4, f"Beating market by {excess:+.1%}"
-    elif excess >  0.00: return 3, f"Slight outperformance ({excess:+.1%})"
-    elif excess > -0.05: return 2, f"Lagging market by {abs(excess):.1%}"
-    else:                return 1, f"Significantly lagging ({excess:+.1%})"
+def score_momentum(mom: dict) -> tuple[int, str]:
+    """
+    Short-term relative momentum: 3M and 6M stock return vs market.
+
+    Genuinely distinct from Alpha (long-run risk-adjusted excess return):
+    - Alpha asks "has this stock historically earned more than its beta predicts?"
+    - Momentum asks "is this stock outperforming the market right now?"
+
+    A stock can have strong long-run alpha but be in a current downtrend (sell signal),
+    or weak alpha but catching a bid (near-term tailwind). The old version used
+    annualised return vs Rm — largely the same signal as alpha, just without beta
+    adjustment, so both dimensions moved together and double-counted outperformance.
+
+    Weighting: 3M gets 2× weight vs 6M (more current, momentum decays quickly).
+    """
+    rel_3m = mom.get("rel_3m")
+    rel_6m = mom.get("rel_6m")
+
+    if rel_3m is None and rel_6m is None:
+        return 3, "Insufficient history for momentum signal"
+
+    # Weighted composite — 3M is more current so carries more weight
+    components = []
+    if rel_3m is not None: components.append(rel_3m * 2)
+    if rel_6m is not None: components.append(rel_6m * 1)
+    composite = sum(components) / sum([2 if rel_3m is not None else 0,
+                                       1 if rel_6m is not None else 0])
+
+    parts = []
+    if rel_3m is not None: parts.append(f"3M: {rel_3m:+.1%}")
+    if rel_6m is not None: parts.append(f"6M: {rel_6m:+.1%}")
+    detail = " | ".join(parts) + " vs market"
+
+    if   composite >  0.10: return 5, f"Strong near-term outperformance — {detail}"
+    elif composite >  0.04: return 4, f"Positive momentum — {detail}"
+    elif composite > -0.04: return 3, f"Tracking market — {detail}"
+    elif composite > -0.10: return 2, f"Lagging market near-term — {detail}"
+    else:                   return 1, f"Significant underperformance — {detail}"
 
 
 def score_financial_health(
