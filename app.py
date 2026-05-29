@@ -13,7 +13,7 @@ from utils.fundamentals import parse_fundamentals, BENCHMARKS
 from utils.financials import (
     get_financial_statements,
     extract_income_data, extract_cashflow_data, extract_balance_data,
-    yoy_pct, fmt_large,
+    yoy_pct, fmt_large, calc_cagr,
 )
 from utils.valuation import (
     calculate_5yr_cagr_from_fmp,
@@ -764,14 +764,22 @@ elif page == "💰  Valuation":
     dcf_price, annual_fcf, total_val, dcf_warn = calculate_dcf(fcf, shares_out, required_return)
 
     fmp_df = get_fmp_income_statement(ticker_accion, api_key)
-    if fmp_df is not None and eps:
+
+    # CAGR for Peter Lynch: prefer FMP EBITDA; fall back to yfinance Net Income
+    if fmp_df is not None and "ebitda" in fmp_df.columns and eps:
         gr = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
-        if gr is not None:
-            lynch_price, lynch_caption, lynch_warn = calculate_lynch_fair_value(eps, gr)
-        else:
-            lynch_price, lynch_caption, lynch_warn = None, None, "⚠️ Not enough EBITDA data for Peter Lynch."
     else:
-        lynch_price, lynch_caption, lynch_warn = None, None, "⚠️ Peter Lynch: missing EPS or FMP data."
+        _stmts_v = get_financial_statements(ticker_accion)
+        _inc_v   = extract_income_data(_stmts_v.get("income"))
+        _ni      = _inc_v.get("net_income") or _inc_v.get("operating_income")
+        gr       = calc_cagr(_ni) if _ni else None
+
+    if gr is not None and eps:
+        lynch_price, lynch_caption, lynch_warn = calculate_lynch_fair_value(eps, gr)
+    elif not eps:
+        lynch_price, lynch_caption, lynch_warn = None, None, None
+    else:
+        lynch_price, lynch_caption, lynch_warn = None, None, None
 
     # Warnings
     for msg in filter(None, [dcf_warn, lynch_warn]):

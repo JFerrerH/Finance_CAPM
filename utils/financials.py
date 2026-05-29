@@ -230,3 +230,15 @@ def fmt_large(val: float | None) -> str:
     if abs_v >= 1e6:
         return f"{sign}${abs_v/1e6:.1f}M"
     return f"{sign}${abs_v:,.0f}"
+
+
+def calc_cagr(values: list) -> float | None:
+    """
+    Compound Annual Growth Rate from a list of annual values (oldest → newest).
+    Returns None if fewer than 2 valid positive values are present.
+    """
+    valid = [float(v) for v in (values or []) if v and float(v) > 0]
+    if len(valid) < 2:
+        return None
+    n = len(valid) - 1
+    return (valid[-1] / valid[0]) ** (1 / n) - 1

@@ -32,10 +32,6 @@ def calculate_dcf(fcf, shares_outstanding, required_return):
 
     try:
         annual_fcf = fcf
-        warning_msg = None
-
-        if annual_fcf > 80_000_000_000:
-            warning_msg = "⚠️ FCF seems abnormally high — this may affect DCF accuracy."
 
         if annual_fcf > 20_000_000_000:
             short_term_growth, terminal_growth = 0.05, 0.02
@@ -59,10 +55,10 @@ def calculate_dcf(fcf, shares_outstanding, required_return):
         total_value = sum(fcf_list) + discounted_terminal_value
         dcf_price = total_value / shares_outstanding
 
-        return dcf_price, annual_fcf, total_value, warning_msg
+        return dcf_price, annual_fcf, total_value, None
 
     except Exception as e:
-        return None, None, None, f"⚠️ DCF calculation failed: {e}"
+        return None, None, None, f"DCF calculation failed: {e}"
 
 
 def calculate_lynch_fair_value(eps, growth_rate):
