@@ -589,3 +589,247 @@ def plot_weights_pie(tickers, weights, title="Selected Portfolio"):
         height=300,
     )
     return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Financial Health charts
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _B(v):
+    """Scale raw USD value to billions for chart axes."""
+    return v / 1e9 if v is not None else 0.0
+
+
+def plot_revenue_earnings_trend(income_data: dict) -> go.Figure:
+    """
+    Grouped bar chart: Revenue vs Net Income over up to 4 years.
+    Secondary y-axis shows Net Margin %.
+    """
+    years    = income_data.get("years", [])
+    revenue  = income_data.get("revenue") or []
+    net_inc  = income_data.get("net_income") or []
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Revenue",
+        x=years, y=[_B(v) for v in revenue],
+        marker_color="#3b82f6",
+        text=[f"${_B(v):.1f}B" for v in revenue],
+        textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        name="Net Income",
+        x=years, y=[_B(v) for v in net_inc],
+        marker_color="#10b981",
+        text=[f"${_B(v):.1f}B" for v in net_inc],
+        textposition="outside",
+    ))
+    # Net margin line
+    margins = []
+    for r, n in zip(revenue, net_inc):
+        margins.append(round(n / r * 100, 1) if r and r != 0 else 0)
+    fig.add_trace(go.Scatter(
+        name="Net Margin %",
+        x=years, y=margins,
+        mode="lines+markers+text",
+        text=[f"{m:.1f}%" for m in margins],
+        textposition="top center",
+        line=dict(color="#f59e0b", width=2),
+        yaxis="y2",
+    ))
+    fig.update_layout(
+        barmode="group",
+        title=dict(text="Revenue & Net Income", font=dict(size=16)),
+        xaxis_title="Year",
+        yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
+        yaxis2=dict(title="Net Margin (%)", overlaying="y", side="right",
+                    ticksuffix="%", showgrid=False),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, b=40),
+    )
+    return fig
+
+
+def plot_sankey(income_data: dict, ticker: str = "") -> go.Figure:
+    """
+    Sankey diagram for the most recent fiscal year P&L flow:
+    Revenue → COGS / Gross Profit → OpEx / EBIT → Tax+Interest / Net Income
+    """
+    def _last(key):
+        vals = income_data.get(key)
+        return float(vals[-1]) if vals else 0.0
+
+    revenue   = _last("revenue")
+    cogs      = _last("cost_of_revenue")
+    gross     = _last("gross_profit")
+    op_inc    = _last("operating_income")
+    net_inc   = _last("net_income")
+    tax       = abs(_last("tax"))
+    year      = income_data.get("years", [""])[-1]
+
+    # If gross profit not directly available, derive it
+    if gross == 0 and revenue and cogs:
+        gross = revenue - cogs
+    if cogs == 0 and revenue and gross:
+        cogs = revenue - gross
+
+    opex        = max(gross - op_inc, 0)        # SG&A + R&D etc.
+    non_op_tax  = max(op_inc - net_inc, 0)      # interest + tax burden
+
+    def _fmt(v):
+        b = abs(v) / 1e9
+        return f"${b:.2f}B" if b >= 1 else f"${abs(v)/1e6:.0f}M"
+
+    labels = [
+        f"Revenue<br>{_fmt(revenue)}",           # 0
+        f"Cost of Revenue<br>{_fmt(cogs)}",      # 1
+        f"Gross Profit<br>{_fmt(gross)}",        # 2
+        f"Op. Expenses<br>{_fmt(opex)}",         # 3
+        f"EBIT<br>{_fmt(op_inc)}",               # 4
+        f"Tax & Interest<br>{_fmt(non_op_tax)}", # 5
+        f"Net Income<br>{_fmt(net_inc)}",        # 6
+    ]
+
+    node_colors = [
+        "#3b82f6",  # Revenue — blue
+        "#ef4444",  # COGS — red
+        "#8b5cf6",  # Gross Profit — purple
+        "#f97316",  # OpEx — orange
+        "#06b6d4",  # EBIT — cyan
+        "#ef4444",  # Tax & Interest — red
+        "#10b981",  # Net Income — green
+    ]
+
+    sources = [0, 0, 2, 2, 4, 4]
+    targets = [1, 2, 3, 4, 5, 6]
+    values  = [
+        max(cogs, 1),
+        max(gross, 1),
+        max(opex, 1),
+        max(op_inc, 1),
+        max(non_op_tax, 1),
+        max(net_inc, 1),
+    ]
+
+    link_colors = [
+        "rgba(239,68,68,0.35)",   # COGS
+        "rgba(139,92,246,0.35)",  # Gross Profit
+        "rgba(249,115,22,0.35)",  # OpEx
+        "rgba(6,182,212,0.35)",   # EBIT
+        "rgba(239,68,68,0.35)",   # Tax & Interest
+        "rgba(16,185,129,0.45)",  # Net Income
+    ]
+
+    fig = go.Figure(go.Sankey(
+        arrangement="snap",
+        node=dict(
+            pad=20, thickness=22,
+            line=dict(color="rgba(255,255,255,0.1)", width=0.5),
+            label=labels,
+            color=node_colors,
+        ),
+        link=dict(
+            source=sources,
+            target=targets,
+            value=values,
+            color=link_colors,
+        ),
+    ))
+    fig.update_layout(
+        title=dict(
+            text=f"P&L Money Flow — {ticker} ({year})",
+            font=dict(size=16),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(size=12),
+        height=420,
+        margin=dict(t=60, b=20, l=20, r=20),
+    )
+    return fig
+
+
+def plot_cashflow_bars(cf_data: dict) -> go.Figure:
+    """
+    Grouped bar chart: Operating CF, Free CF, Investing CF, Financing CF by year.
+    """
+    years     = cf_data.get("years", [])
+    operating = cf_data.get("operating") or []
+    fcf       = cf_data.get("fcf") or []
+    investing = cf_data.get("investing") or []
+    financing = cf_data.get("financing") or []
+
+    def _b(lst):
+        return [_B(v) for v in lst]
+
+    fig = go.Figure()
+    if operating:
+        fig.add_trace(go.Bar(name="Operating CF",  x=years, y=_b(operating),
+                             marker_color="#3b82f6"))
+    if fcf:
+        fig.add_trace(go.Bar(name="Free CF",       x=years, y=_b(fcf),
+                             marker_color="#10b981"))
+    if investing:
+        fig.add_trace(go.Bar(name="Investing CF",  x=years, y=_b(investing),
+                             marker_color="#f59e0b"))
+    if financing:
+        fig.add_trace(go.Bar(name="Financing CF",  x=years, y=_b(financing),
+                             marker_color="#8b5cf6"))
+
+    fig.update_layout(
+        barmode="group",
+        title=dict(text="Cash Flow Statement", font=dict(size=16)),
+        xaxis_title="Year",
+        yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, b=40),
+    )
+    return fig
+
+
+def plot_capital_structure(bal_data: dict) -> go.Figure:
+    """
+    Stacked bar: Total Debt vs Stockholders Equity over years.
+    Line overlay: D/E ratio on secondary axis.
+    """
+    years  = bal_data.get("years", [])
+    debt   = bal_data.get("total_debt")  or []
+    equity = bal_data.get("equity")      or []
+
+    de_ratio = []
+    for d, e in zip(debt, equity):
+        de_ratio.append(round(d / e, 2) if e and e != 0 else 0)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Total Debt", x=years, y=[_B(v) for v in debt],
+        marker_color="#ef4444",
+        text=[f"${_B(v):.1f}B" for v in debt], textposition="inside",
+    ))
+    fig.add_trace(go.Bar(
+        name="Stockholders Equity", x=years, y=[_B(v) for v in equity],
+        marker_color="#10b981",
+        text=[f"${_B(v):.1f}B" for v in equity], textposition="inside",
+    ))
+    fig.add_trace(go.Scatter(
+        name="D/E Ratio",
+        x=years, y=de_ratio,
+        mode="lines+markers+text",
+        text=[f"{r:.2f}x" for r in de_ratio],
+        textposition="top center",
+        line=dict(color="#f59e0b", width=2, dash="dot"),
+        yaxis="y2",
+    ))
+    fig.update_layout(
+        barmode="stack",
+        title=dict(text="Capital Structure", font=dict(size=16)),
+        xaxis_title="Year",
+        yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
+        yaxis2=dict(title="D/E Ratio", overlaying="y", side="right",
+                    ticksuffix="x", showgrid=False),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, b=40),
+    )
+    return fig

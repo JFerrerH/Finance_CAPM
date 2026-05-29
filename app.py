@@ -10,6 +10,11 @@ from utils.performance import calculate_performance_metrics, calculate_rolling_b
 from utils.montecarlo import run_monte_carlo
 from utils.markowitz import run_efficient_frontier, get_optimal_portfolios
 from utils.fundamentals import parse_fundamentals, BENCHMARKS
+from utils.financials import (
+    get_financial_statements,
+    extract_income_data, extract_cashflow_data, extract_balance_data,
+    yoy_pct, fmt_large,
+)
 from utils.valuation import (
     calculate_5yr_cagr_from_fmp,
     calculate_pe_fair_value,
@@ -32,6 +37,10 @@ from utils.charts import (
     plot_efficient_frontier,
     plot_portfolio_weights,
     plot_weights_pie,
+    plot_revenue_earnings_trend,
+    plot_sankey,
+    plot_cashflow_bars,
+    plot_capital_structure,
 )
 
 
@@ -190,7 +199,7 @@ with st.sidebar:
     page = st.radio(
         "page",
         ["📊  Dashboard", "📉  Analysis", "📐  Performance", "🎲  Risk",
-         "📦  Portfolio", "🏦  Fundamentals", "💰  Valuation", "🗃  Raw Data"],
+         "📦  Portfolio", "🏦  Fundamentals", "🏥  Financial Health", "💰  Valuation", "🗃  Raw Data"],
         label_visibility="collapsed",
     )
 
@@ -587,6 +596,105 @@ elif page == "📦  Portfolio":
         plot_portfolio_weights(tickers_used, ms_w, mv_w),
         use_container_width=True, theme="streamlit",
     )
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Financial Health
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "🏥  Financial Health":
+    page_header("Financial Health", ticker_accion)
+
+    with st.spinner("Loading financial statements…"):
+        stmts = get_financial_statements(ticker_accion)
+
+    income_df  = stmts.get("income",   None)
+    balance_df = stmts.get("balance",  None)
+    cf_df      = stmts.get("cashflow", None)
+
+    if (income_df is None or income_df.empty) and \
+       (balance_df is None or balance_df.empty):
+        st.warning("⚠️ Could not load financial statements from Yahoo Finance. Try again later.")
+        st.stop()
+
+    inc  = extract_income_data(income_df)
+    cf   = extract_cashflow_data(cf_df)
+    bal  = extract_balance_data(balance_df)
+
+    # ── KPI strip ───────────────────────────────────────────────────────────────
+    section_divider("Key Figures (Most Recent Year)")
+    k1, k2, k3, k4, k5 = st.columns(5)
+
+    rev_yoy  = yoy_pct(inc.get("revenue"))
+    ni_yoy   = yoy_pct(inc.get("net_income"))
+    fcf_val  = cf.get("fcf")
+    cash_val = bal.get("cash")
+    debt_val = bal.get("total_debt")
+
+    k1.metric("Revenue",
+              fmt_large(inc["revenue"][-1] if inc.get("revenue") else None),
+              delta=f"{rev_yoy:.1%} YoY" if rev_yoy is not None else None)
+    k2.metric("Net Income",
+              fmt_large(inc["net_income"][-1] if inc.get("net_income") else None),
+              delta=f"{ni_yoy:.1%} YoY" if ni_yoy is not None else None)
+    k3.metric("Free Cash Flow",
+              fmt_large(fcf_val[-1] if fcf_val else None))
+    k4.metric("Cash & Equivalents",
+              fmt_large(cash_val[-1] if cash_val else None))
+
+    # Net Debt = Total Debt - Cash
+    if debt_val and cash_val:
+        net_debt = debt_val[-1] - cash_val[-1]
+        k5.metric("Net Debt",
+                  fmt_large(net_debt),
+                  delta="Net Cash" if net_debt < 0 else "Net Debt",
+                  delta_color="normal" if net_debt < 0 else "inverse")
+    else:
+        k5.metric("Total Debt", fmt_large(debt_val[-1] if debt_val else None))
+
+    # ── Revenue & Earnings trend ─────────────────────────────────────────────
+    section_divider("Revenue & Earnings")
+    if inc.get("revenue"):
+        st.plotly_chart(
+            plot_revenue_earnings_trend(inc),
+            use_container_width=True, theme="streamlit",
+        )
+    else:
+        st.info("Revenue data not available.")
+
+    # ── P&L Sankey ──────────────────────────────────────────────────────────
+    section_divider("Where Does the Money Go? — P&L Flow")
+    if inc.get("revenue") and inc.get("net_income"):
+        st.plotly_chart(
+            plot_sankey(inc, ticker_accion),
+            use_container_width=True, theme="streamlit",
+        )
+        st.caption(
+            "Flow shows how Revenue is distributed across Cost of Revenue, "
+            "Operating Expenses, taxes & interest, and ultimately Net Income."
+        )
+    else:
+        st.info("Insufficient income statement data for Sankey diagram.")
+
+    # ── Cash Flow ────────────────────────────────────────────────────────────
+    section_divider("Cash Flow Analysis")
+    cf_col, struct_col = st.columns(2, gap="large")
+    with cf_col:
+        if cf.get("operating"):
+            st.plotly_chart(
+                plot_cashflow_bars(cf),
+                use_container_width=True, theme="streamlit",
+            )
+        else:
+            st.info("Cash flow data not available.")
+
+    # ── Capital structure ────────────────────────────────────────────────────
+    with struct_col:
+        if bal.get("total_debt") and bal.get("equity"):
+            st.plotly_chart(
+                plot_capital_structure(bal),
+                use_container_width=True, theme="streamlit",
+            )
+        else:
+            st.info("Balance sheet data not available.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAGE: Fundamentals
