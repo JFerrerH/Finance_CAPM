@@ -6,3 +6,5 @@ __pycache__/
 *.pyd
 .Python
 /.streamlit
+/.vscode
+__init__.py

@@ -1,333 +1,361 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
-import seaborn as sns
-import statsmodels.api as sm
 import datetime
-import requests
 
-# === Cached function to fetch Sector P/E from FMP ===
+from utils.data import download_ticker_data, get_stock_info
+from utils.fmp import get_sector_pe, get_fmp_income_statement
+from utils.capm import calculate_capm
+from utils.valuation import (
+    calculate_5yr_cagr_from_fmp,
+    calculate_pe_fair_value,
+    calculate_ddm,
+    calculate_dcf,
+    calculate_lynch_fair_value,
+)
+from utils.charts import (
+    plot_sml,
+    plot_monthly_returns,
+    plot_regression,
+    plot_valuation_comparison,
+)
 
-SECTOR_PE_FALLBACK = {
-    "Technology": 25,
-    "Consumer Defensive": 22,
-    "Healthcare": 24,
-    "Financial Services": 14,
-    "Energy": 12,
-    "Industrials": 17,
-    "Consumer Cyclical": 20,
-    "Communication Services": 18,
-    "Utilities": 16,
-    "Real Estate": 19,
-    "Materials": 15
+# ── Page config ───────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="CAPM Calculator",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* Layout */
+.block-container { padding-top: 1.8rem; padding-bottom: 2rem; }
+
+/* Hide footer */
+footer { visibility: hidden; }
+
+/* Metric cards — use Streamlit theme variables so they adapt to dark/light */
+div[data-testid="metric-container"] {
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 12px;
+    padding: 18px 22px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-@st.cache_data(show_spinner=False)
-def get_sector_pe(ticker, api_key):
-    try:
-        
-        profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={api_key}"
-        profile_resp = requests.get(profile_url).json()
+/* Sidebar branding */
+.sidebar-brand {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-color);
+    letter-spacing: -0.5px;
+}
+.sidebar-sub {
+    font-size: 0.78rem;
+    color: var(--text-color);
+    opacity: 0.55;
+    margin-top: -4px;
+    margin-bottom: 12px;
+}
 
-        if not profile_resp or not isinstance(profile_resp, list):
-            st.warning("⚠️ No profile data returned.")
-            return None
+/* Section label above inputs */
+.input-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-color);
+    opacity: 0.45;
+    margin-bottom: 4px;
+}
 
-        sector = profile_resp[0].get("sector")
-        st.write("Sector:", sector)
+/* Page header strip */
+.page-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 1.2rem;
+}
+.page-header h2 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-color);
+}
+.page-header .ticker-badge {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 2px 10px;
+}
 
-        if not sector:
-            return None
+/* Stats card used in Analysis */
+.stat-card {
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+}
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-color);
+    opacity: 0.55;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-top: 2px;
+}
 
-        # Try API first
-        sector_url = f"https://financialmodelingprep.com/api/v4/sector_price_earning_ratio?apikey={api_key}"
-        sector_resp = requests.get(sector_url).json()
+/* Divider with label */
+.section-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 1.5rem 0 1rem 0;
+    color: var(--text-color);
+    opacity: 0.45;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.section-divider::before, .section-divider::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+</style>
+""", unsafe_allow_html=True)
 
-        if isinstance(sector_resp, dict) and "Error Message" in sector_resp:
-            #st.warning("⚠️ Sector P/E data not available on your current FMP plan. Using fallback.")
-            return SECTOR_PE_FALLBACK.get(sector, 25)
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+INDEX_NAMES = {"^GSPC": "S&P 500", "^IXIC": "NASDAQ", "^DJI": "Dow Jones"}
 
-        if not isinstance(sector_resp, list):
-            st.warning("⚠️ Unexpected response structure for sector P/E.")
-            return SECTOR_PE_FALLBACK.get(sector, 25)
+with st.sidebar:
+    st.markdown('<p class="sidebar-brand">📈 CAPM Calculator</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sidebar-sub">Capital Asset Pricing Model</p>', unsafe_allow_html=True)
+    st.divider()
 
-        for entry in sector_resp:
-            if entry.get("sector", "").lower() == sector.lower():
-                return entry.get("peRatioTTM")
+    st.markdown('<p class="input-label">Configuration</p>', unsafe_allow_html=True)
+    ticker_accion = st.text_input("Stock Ticker", "AAPL", placeholder="e.g. AAPL, MSFT")
+    ticker_indice = st.selectbox(
+        "Benchmark Index", ["^GSPC", "^IXIC", "^DJI"],
+        format_func=lambda x: f"{INDEX_NAMES[x]} ({x})",
+    )
+    start_date = st.date_input("Start Date", datetime.date(2020, 1, 1))
+    bond_ticker = st.text_input("Risk-Free Rate", "^TNX", placeholder="e.g. ^TNX")
 
-        # If sector not matched
-        st.warning("⚠️ Sector not found in P/E list. Using fallback.")
-        return SECTOR_PE_FALLBACK.get(sector, 25)
+    st.divider()
+    st.markdown('<p class="input-label">Navigate</p>', unsafe_allow_html=True)
+    page = st.radio(
+        "page",
+        ["📊  Dashboard", "📉  Analysis", "💰  Valuation", "🗃  Raw Data"],
+        label_visibility="collapsed",
+    )
 
-    except Exception as e:
-        st.warning(f"Error fetching sector P/E: {e}")
-        return None
-
-# 5 years EBITDA
-def get_fmp_income_statement(ticker, api_key):
-    url = f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}?limit=5&apikey={api_key}"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        df = pd.DataFrame(data)
-        return df[["date", "revenue", "ebitda"]].dropna()
-    except Exception as e:
-        st.warning(f"Error fetching FMP financials: {e}")
-        return None
-
-
-# === Revenue CAGR 5 yr ===
-def calculate_5yr_cagr_from_fmp(df, field):
-    df = df.sort_values("date")
-    start = df[field].iloc[0]
-    end = df[field].iloc[-1]
-    n_years = len(df) - 1
-
-    if start <= 0 or end <= 0 or n_years == 0:
-        return None
-
-    return (end / start) ** (1 / n_years) - 1
-
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_stock_info(ticker):
-    try:
-        return yf.Ticker(ticker).get_info()
-    except Exception:
-        return {}
-
-# === Clean and download functions ===
-def clean_column_names(df):
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [col[0] for col in df.columns]
-    df.columns = [col.replace("(", "").replace(")", "").replace(",", "").strip() for col in df.columns]
-    return df
-
-def download_ticker_data(ticker, start_date, end_date, interval):
-    data = yf.download(ticker, start=start_date, end=end_date, interval=interval)
-    data = clean_column_names(data)
-    data.index = pd.to_datetime(data.index)
-    if data.empty:
-        st.error(f"No data found for ticker: {ticker}")
-    return data
-
-# === UI + Data Loading ===
-st.title("CAPM Model Calculator")
-
-st.sidebar.header("Select Stock & Market Index")
-ticker_accion = st.sidebar.text_input("Enter Stock Ticker (e.g., AAPL)", "AAPL")
-ticker_indice = st.sidebar.selectbox("Select Market Index", ["^GSPC", "^IXIC", "^DJI"], index=0)
-interval = "1mo"
-start_date = st.sidebar.date_input("Start Date", datetime.date(2020, 1, 1))
+# ── Data & calculations ───────────────────────────────────────────────────────
+interval   = "1mo"
 today_date = datetime.date.today()
-bond_ticker = st.sidebar.text_input("Enter Bond Ticker (e.g., ^TNX)", "^TNX")
 
 data_accion = download_ticker_data(ticker_accion, start_date, today_date, interval)
 data_indice = download_ticker_data(ticker_indice, start_date, today_date, interval)
 
-data_accion['Monthly_Return_Stock'] = data_accion["Close"].pct_change()
-data_indice['Monthly_Return_Index'] = data_indice["Close"].pct_change()
-
-data = data_accion.join(data_indice['Monthly_Return_Index']).dropna()
-
-tabs = st.tabs(["CAPM Model", "Monthly Returns", "Regression Analysis", "Stock Data", "Market Data"])
-
-correlation = data['Monthly_Return_Stock'].corr(data['Monthly_Return_Index'])
-X = sm.add_constant(data['Monthly_Return_Index'])
-Y = data['Monthly_Return_Stock']
-lm = sm.OLS(Y, X).fit()
-intercept, beta_daily_return_indice = lm.params
-y_pred = beta_daily_return_indice * X['Monthly_Return_Index'] + intercept
+data_accion["Monthly_Return_Stock"] = data_accion["Close"].pct_change()
+data_indice["Monthly_Return_Index"] = data_indice["Close"].pct_change()
+data = data_accion.join(data_indice["Monthly_Return_Index"]).dropna()
 
 try:
     Rf_data = download_ticker_data(bond_ticker, start_date, today_date, interval)
     Rf = Rf_data["Close"].iloc[-1] / 100
 except Exception as e:
-    st.error(f"Could not fetch bond data for {bond_ticker}: {e}")
+    st.sidebar.error(f"Bond data unavailable: {e}")
     Rf = 0.04
-Rm = ((1 + data['Monthly_Return_Index'].mean()) ** 12) - 1
-CAPM = (Rf * 100) + (beta_daily_return_indice * ((Rm - Rf) * 100))
 
-# === CAPM Tab ===
-with tabs[0]:
-    st.write("### CAPM Model Calculation")
-    st.write(f"Risk-Free Rate ({bond_ticker}): {Rf*100:.2f}%")
-    st.write(f"Expected Market Return: {Rm*100:.2f}%")
-    st.write(f"Calculated CAPM Expected Return for {ticker_accion}: **{CAPM:.2f}%**")
+capm  = calculate_capm(data, Rf)
+beta  = capm["beta"]
+Rm    = capm["Rm"]
+CAPM  = capm["capm_return"]
 
-    betas = np.linspace(0, 4, 20)
-    expected_returns = Rf * 100 + betas * (Rm * 100 - Rf * 100)
+# ── Helper ────────────────────────────────────────────────────────────────────
+def page_header(title, ticker):
+    st.markdown(
+        f'<div class="page-header"><h2>{title}</h2>'
+        f'<span class="ticker-badge">{ticker.upper()}</span></div>',
+        unsafe_allow_html=True,
+    )
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(betas, expected_returns, label="Security Market Line (SML)", color="blue", linewidth=2)
-    ax.scatter(0, Rf * 100, color="red", marker="o", label="Risk-Free Rate")
-    ax.scatter(1, Rm * 100, color="brown", marker="o", label="Market Return")
-    ax.scatter(beta_daily_return_indice, CAPM, color="green", marker="o", s=100, label=f"{ticker_accion} (β={beta_daily_return_indice:.2f})")
+def section_divider(label):
+    st.markdown(f'<div class="section-divider">{label}</div>', unsafe_allow_html=True)
 
-    plt.xlabel("Beta (Systematic Risk)")
-    plt.ylabel("Expected Return")
-    plt.title("CAPM - Security Market Line")
-    plt.axhline(y=Rf * 100, color="gray", linestyle="--", linewidth=1)
-    plt.axvline(x=1, color="gray", linestyle="--", linewidth=1, label="Market Beta = 1")
-    plt.legend()
-    plt.grid(False)
-    st.pyplot(fig)
+def stat_card(label, value):
+    st.markdown(
+        f'<div class="stat-card"><div class="stat-label">{label}</div>'
+        f'<div class="stat-value">{value}</div></div>',
+        unsafe_allow_html=True,
+    )
 
-# === Monthly Returns ===
-with tabs[1]:
-    st.write("### Monthly Returns Stock vs Index")
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.lineplot(data=data, x=data.index, y='Monthly_Return_Stock', label='Monthly Return Stock')
-    sns.lineplot(data=data, x=data.index, y='Monthly_Return_Index', label='Monthly Return Index')
-    plt.gca().spines[['top', 'right']].set_visible(False)
-    plt.xlabel("Date")
-    plt.ylabel("Monthly Return")
-    plt.title("Monthly Returns Comparison")
-    plt.legend()
-    st.pyplot(fig)
+def price_delta(fair, current):
+    if fair and current:
+        pct = (fair - current) / current * 100
+        return f"{pct:+.1f}%"
+    return None
 
-# === Regression ===
-with tabs[2]:
-    st.write("### Regression Analysis")
-    st.write(f"Beta (β) of {ticker_accion}: {beta_daily_return_indice:.2f}")
-    st.write(f"Correlation: {correlation:.2f}")
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Dashboard
+# ════════════════════════════════════════════════════════════════════════════════
+if page == "📊  Dashboard":
+    page_header("Dashboard", ticker_accion)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.scatterplot(x=X['Monthly_Return_Index'], y=Y, ax=ax)
-    sns.lineplot(x=X['Monthly_Return_Index'], y=y_pred, color='red', ax=ax)
-    plt.xlabel("Market Monthly Return")
-    plt.ylabel("Stock Monthly Return")
-    plt.title("Regression Analysis: Beta Calculation")
-    st.pyplot(fig)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("CAPM Expected Return", f"{CAPM:.2f}%")
+    c2.metric("Beta (β)", f"{beta:.2f}",
+              delta=f"{beta - 1:+.2f} vs market", delta_color="off")
+    c3.metric("Risk-Free Rate", f"{Rf * 100:.2f}%")
+    c4.metric("Market Return (Rm)", f"{Rm * 100:.2f}%")
 
-# === Stock Data ===
-with tabs[3]:
-    st.write("### Stock Data")
-    st.dataframe(data_accion[['Close', 'Monthly_Return_Stock']].dropna())
+    section_divider("Security Market Line")
+    st.plotly_chart(plot_sml(Rf, Rm, beta, CAPM, ticker_accion), use_container_width=True, theme="streamlit")
 
-# === Market Data ===
-with tabs[4]:
-    st.write("### Market Index Data")
-    st.dataframe(data_indice[['Close', 'Monthly_Return_Index']].dropna())
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Analysis
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "📉  Analysis":
+    page_header("Return Analysis", ticker_accion)
 
-# === Fair Value Estimations ===
-with st.tabs(["Fair Value Estimations"])[0]:
-    st.write("### Fair Price Estimations for", ticker_accion.upper())
+    section_divider("Monthly Returns")
+    st.plotly_chart(plot_monthly_returns(data), use_container_width=True, theme="streamlit")
+
+    section_divider("OLS Regression — Beta Estimation")
+    chart_col, stats_col = st.columns([3, 1], gap="large")
+
+    with chart_col:
+        st.plotly_chart(
+            plot_regression(capm["X"], capm["Y"], capm["y_pred"]),
+            use_container_width=True,
+            theme="streamlit",
+        )
+
+    with stats_col:
+        st.markdown("<br>", unsafe_allow_html=True)
+        stat_card("Beta (β)", f"{beta:.4f}")
+        stat_card("Alpha (α)", f"{capm['intercept']:.4f}")
+        stat_card("Correlation", f"{capm['correlation']:.4f}")
+        stat_card("Risk-Free Rate", f"{Rf * 100:.2f}%")
+        stat_card("Mkt. Return (Rm)", f"{Rm * 100:.2f}%")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Valuation
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "💰  Valuation":
+    page_header("Fair Value Estimations", ticker_accion)
 
     info = get_stock_info(ticker_accion)
-
     if not info:
-        st.warning("⚠️ Could not fetch stock info from Yahoo Finance (rate limit). Fair value estimations are unavailable. Try again in a few minutes.")
+        st.warning("⚠️ Could not fetch stock info from Yahoo Finance (rate limit). Try again in a few minutes.")
         st.stop()
 
-    current_price = info.get("currentPrice")
-    eps = info.get("trailingEps")
-    pe_ratio = info.get("trailingPE")
-    dividend = info.get("dividendRate", 0) or 0
-    dividend_growth = 0.05
-    required_return = CAPM / 100 if CAPM else 0.10
-    fcf = info.get("freeCashflow", 0)
-    shares_outstanding = info.get("sharesOutstanding", 1)
+    current_price    = info.get("currentPrice")
+    eps              = info.get("trailingEps")
+    dividend         = info.get("dividendRate", 0) or 0
+    required_return  = CAPM / 100 if CAPM else 0.10
+    fcf              = info.get("freeCashflow", 0)
+    shares_out       = info.get("sharesOutstanding", 1)
 
-    api_key = st.secrets["fmp"]["api_key"]
-    sector_pe = get_sector_pe(ticker_accion, api_key)
-    
-    if not sector_pe or sector_pe <= 0:
+    api_key   = st.secrets["fmp"]["api_key"]
+    sector_pe = get_sector_pe(ticker_accion, api_key) or 25
+    if sector_pe <= 0:
         sector_pe = 25
 
-    pe_fair_price = eps * sector_pe if eps else None
+    pe_fair_price                          = calculate_pe_fair_value(eps, sector_pe)
+    ddm_price                              = calculate_ddm(dividend, required_return)
+    dcf_price, annual_fcf, total_val, dcf_warn = calculate_dcf(fcf, shares_out, required_return)
 
-    ddm_price = None
-    if dividend > 1 and required_return > dividend_growth:
-        try:
-            ddm_price = dividend * (1 + dividend_growth) / (required_return - dividend_growth)
-        except ZeroDivisionError:
-            pass
-
-    dcf_price = None
-    if fcf and fcf > 0 and shares_outstanding > 0:
-        try:
-            annual_fcf = fcf
-
-            # ⚠️ Sanity check for abnormally high FCF
-            if annual_fcf > 80_000_000_000:
-                st.warning("⚠️ FCF seems abnormally high — this may affect DCF accuracy.")
-
-            if annual_fcf > 20_000_000_000:
-                short_term_growth = 0.05
-                terminal_growth = 0.02
-            elif annual_fcf > 5_000_000_000:
-                short_term_growth = 0.06
-                terminal_growth = 0.025
-            else:
-                short_term_growth = 0.10
-                terminal_growth = 0.03
-
-            forecast_years = 5
-            discount_rate = required_return
-
-            fcf_list = []
-            for year in range(1, forecast_years + 1):
-                projected_fcf = annual_fcf * (1 + short_term_growth) ** year
-                discounted_fcf = projected_fcf / (1 + discount_rate) ** year
-                fcf_list.append(discounted_fcf)
-
-            final_fcf = annual_fcf * (1 + short_term_growth) ** forecast_years
-            terminal_value = final_fcf * (1 + terminal_growth) / (discount_rate - terminal_growth)
-            discounted_terminal_value = terminal_value / (1 + discount_rate) ** forecast_years
-
-            total_value = sum(fcf_list) + discounted_terminal_value
-            dcf_price = total_value / shares_outstanding
-
-            st.write("Annual FCF:", annual_fcf)
-            st.write("Total Firm Value:", total_value)
-
-        except Exception as e:
-            st.warning(f"⚠️ DCF calculation failed: {e}")
-    
-    st.subheader("📊 Estimated Fair Values:")  
-    # === Peter Lynch Fair Value ===
     fmp_df = get_fmp_income_statement(ticker_accion, api_key)
-
-    lynch_fair_value = None
-    growth_rate = None
-
     if fmp_df is not None and eps:
-        growth_rate = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
-
-        if growth_rate:
-
-            if growth_rate < 0.05:
-                st.warning("⚠️ Peter Lynch Fair Value: Not applicable — firm does not meet growth criteria (CAGR < 5%).")
-            elif 0.05 <= growth_rate < 0.10:
-                lynch_fair_value = eps * growth_rate * 100
-                st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
-                st.caption(f"⚠️ Moderate-growth stock. PEG=1 applied conservatively (CAGR: {growth_rate:.2%}).")
-            else:
-                # Clamp at 25% max
-                clamped_growth = min(growth_rate, 0.25)
-                lynch_fair_value = eps * clamped_growth * 100
-                st.write(f"**Peter Lynch Fair Value:** ${lynch_fair_value:.2f}")
-                st.caption(f"✅ Based on 5-year EBITDA CAGR: {clamped_growth:.2%}")
+        gr = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
+        if gr is not None:
+            lynch_price, lynch_caption, lynch_warn = calculate_lynch_fair_value(eps, gr)
         else:
-            st.warning("⚠️ Unable to calculate Peter Lynch Fair Value: Not enough valid EBITDA data.")
+            lynch_price, lynch_caption, lynch_warn = None, None, "⚠️ Not enough EBITDA data for Peter Lynch."
     else:
-     st.warning("⚠️ Peter Lynch Fair Value unavailable — missing EPS or FMP data.")
-    
-    st.write(f"**Current Price:** ${current_price:.2f}" if current_price else "No price available.")
-    
-    st.write(f"**P/E Method:** ${pe_fair_price:.2f}" if pe_fair_price else "P/E Method: Not enough data.")
-    st.write(f"**DDM Method:** ${ddm_price:.2f}" if ddm_price else "DDM Method: Not applicable.")
-    st.write(f"**DCF Method:** ${dcf_price:.2f}" if dcf_price else "DCF Method: Not enough data.")
+        lynch_price, lynch_caption, lynch_warn = None, None, "⚠️ Peter Lynch: missing EPS or FMP data."
 
-    with st.expander("🔍 Show Raw Inputs"):
-        st.write("EPS:", eps)
-        st.write("Sector P/E (used):", sector_pe)
-        st.write("Dividend Rate:", dividend)
-        st.write("Required Return (CAPM):", required_return)
-        st.write("Free Cash Flow (Annualized):", fcf if fcf else None)
-        st.write("Shares Outstanding:", shares_outstanding)
-    
+    # Warnings
+    for msg in filter(None, [dcf_warn, lynch_warn]):
+        st.warning(msg)
+
+    # Comparison chart
+    section_divider("Fair Value vs. Current Price")
+    st.plotly_chart(
+        plot_valuation_comparison(current_price, pe_fair_price, ddm_price, dcf_price, lynch_price),
+        use_container_width=True,
+        theme="streamlit",
+    )
+
+    # Metric cards
+    section_divider("Method Breakdown")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Current Price",
+              f"${current_price:.2f}" if current_price else "N/A")
+    c2.metric("P/E Method",
+              f"${pe_fair_price:.2f}" if pe_fair_price else "N/A",
+              delta=price_delta(pe_fair_price, current_price))
+    c3.metric("DCF Method",
+              f"${dcf_price:.2f}" if dcf_price else "N/A",
+              delta=price_delta(dcf_price, current_price))
+    c4.metric("DDM Method",
+              f"${ddm_price:.2f}" if ddm_price else "N/A",
+              delta=price_delta(ddm_price, current_price))
+    c5.metric("Peter Lynch",
+              f"${lynch_price:.2f}" if lynch_price else "N/A",
+              delta=price_delta(lynch_price, current_price),
+              help=lynch_caption or "")
+
+    # Expanders
+    if dcf_price:
+        with st.expander("📋 DCF Detail"):
+            dc1, dc2 = st.columns(2)
+            dc1.metric("Annual FCF", f"${annual_fcf:,.0f}")
+            dc2.metric("Total Firm Value", f"${total_val:,.0f}")
+
+    with st.expander("🔍 Raw Inputs"):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.write("**EPS:**", eps)
+            st.write("**Sector P/E used:**", sector_pe)
+            st.write("**Dividend Rate:**", dividend)
+        with col_b:
+            st.write("**Required Return (CAPM):**", f"{required_return:.2%}")
+            st.write("**Free Cash Flow:**", f"${fcf:,.0f}" if fcf else "N/A")
+            st.write("**Shares Outstanding:**", f"{shares_out:,.0f}")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Raw Data
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "🗃  Raw Data":
+    page_header("Raw Data", ticker_accion)
+
+    tab_stock, tab_index = st.tabs([
+        f"📈 {ticker_accion.upper()} — Stock",
+        f"📊 {INDEX_NAMES.get(ticker_indice, ticker_indice)} — Index",
+    ])
+    with tab_stock:
+        st.dataframe(
+            data_accion[["Close", "Monthly_Return_Stock"]].dropna(),
+            use_container_width=True,
+        )
+    with tab_index:
+        st.dataframe(
+            data_indice[["Close", "Monthly_Return_Index"]].dropna(),
+            use_container_width=True,
+        )
+
