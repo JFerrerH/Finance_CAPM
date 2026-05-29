@@ -546,18 +546,37 @@ with st.sidebar:
 interval   = "1mo"
 today_date = datetime.date.today()
 
-data_accion = download_ticker_data(ticker_accion, start_date, today_date, interval)
-data_indice = download_ticker_data(ticker_indice, start_date, today_date, interval)
+data_accion = download_ticker_data(ticker_accion, start_date, today_date, interval, silent=True)
+if data_accion.empty or "Close" not in data_accion.columns:
+    st.error(
+        f"**No price data found for ticker `{ticker_accion}`.**  \n"
+        "Please check the symbol and try again (e.g. AAPL, MSFT, TSLA)."
+    )
+    st.stop()
+
+data_indice = download_ticker_data(ticker_indice, start_date, today_date, interval, silent=True)
+if data_indice.empty or "Close" not in data_indice.columns:
+    st.error(f"Index data unavailable for `{ticker_indice}`. Please try again later.")
+    st.stop()
 
 data_accion["Monthly_Return_Stock"] = data_accion["Close"].pct_change()
 data_indice["Monthly_Return_Index"] = data_indice["Close"].pct_change()
 data = data_accion.join(data_indice["Monthly_Return_Index"]).dropna()
 
+if len(data) < 3:
+    st.warning(
+        f"Not enough overlapping monthly data between **{ticker_accion}** and the selected index.  \n"
+        "Try moving the **Start Date** further back to capture more history."
+    )
+    st.stop()
+
 try:
-    Rf_data = download_ticker_data(bond_ticker, start_date, today_date, interval)
+    Rf_data = download_ticker_data(bond_ticker, start_date, today_date, interval, silent=True)
+    if Rf_data.empty or "Close" not in Rf_data.columns:
+        raise ValueError("empty response")
     Rf = Rf_data["Close"].iloc[-1] / 100
-except Exception as e:
-    st.sidebar.error(f"Bond data unavailable: {e}")
+except Exception:
+    st.sidebar.warning(f"Risk-free rate data unavailable for `{bond_ticker}` — defaulting to 4.00%.")
     Rf = 0.04
 
 capm  = calculate_capm(data, Rf)
