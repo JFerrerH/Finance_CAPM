@@ -55,3 +55,20 @@ def calculate_rolling_beta(data, window=12):
         betas.append(b)
         dates.append(chunk.index[-1])
     return pd.Series(betas, index=dates, name="Rolling Beta")
+
+
+def calculate_var_cvar(returns, confidence_levels=(0.95, 0.99)):
+    """
+    Historical Value at Risk and Conditional VaR (Expected Shortfall).
+    Values are expressed as monthly returns — negative means loss.
+    e.g. var_95 = -0.035 means: at 95% confidence, monthly loss won't exceed 3.5%.
+    """
+    results = {}
+    for cl in confidence_levels:
+        cl_pct = int(cl * 100)
+        var  = float(np.percentile(returns, (1 - cl) * 100))
+        tail = returns[returns <= var]
+        cvar = float(tail.mean()) if len(tail) > 0 else var
+        results[f"var_{cl_pct}"]  = var
+        results[f"cvar_{cl_pct}"] = cvar
+    return results

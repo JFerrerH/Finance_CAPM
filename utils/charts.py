@@ -244,3 +244,153 @@ def plot_return_distribution(returns):
         margin=dict(t=60),
     )
     return fig
+
+
+def plot_var_distribution(returns, var_results):
+    """Histogram of monthly returns with VaR/CVaR threshold lines."""
+    import numpy as np
+    from scipy import stats
+
+    mean = float(returns.mean())
+    std  = float(returns.std())
+    x    = np.linspace(returns.min(), returns.max(), 300)
+    normal_curve = stats.norm.pdf(x, mean, std)
+
+    var_95  = var_results["var_95"]
+    cvar_95 = var_results["cvar_95"]
+    var_99  = var_results["var_99"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=returns, nbinsx=30,
+        name="Monthly Returns",
+        marker_color="#3b82f6",
+        opacity=0.60,
+        histnorm="probability density",
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=normal_curve,
+        mode="lines", name="Normal fit",
+        line=dict(color="#f59e0b", width=2, dash="dash"),
+    ))
+    fig.add_vline(x=var_95,  line_dash="solid", line_color="#ef4444", line_width=2,
+                  annotation_text=f"VaR 95%: {var_95:.2%}", annotation_position="top left",
+                  annotation_font_color="#ef4444")
+    fig.add_vline(x=var_99,  line_dash="solid", line_color="#7f1d1d", line_width=2,
+                  annotation_text=f"VaR 99%: {var_99:.2%}", annotation_position="bottom left",
+                  annotation_font_color="#991b1b")
+    fig.add_vline(x=cvar_95, line_dash="dot",   line_color="#f97316", line_width=1.5,
+                  annotation_text=f"CVaR 95%: {cvar_95:.2%}", annotation_position="top right",
+                  annotation_font_color="#f97316")
+    fig.update_layout(
+        title=dict(text="Monthly Return Distribution with VaR Thresholds", font=dict(size=16)),
+        xaxis_title="Monthly Return",
+        yaxis_title="Density",
+        hovermode="x unified",
+        barmode="overlay",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60),
+    )
+    return fig
+
+
+def plot_monte_carlo(pct_paths, future_dates, current_price, ticker):
+    """Fan chart of Monte Carlo GBM percentile paths."""
+    dates_list = list(future_dates)
+    dates_rev  = list(future_dates[::-1])
+
+    fig = go.Figure()
+
+    # 90% confidence band (5th – 95th)
+    fig.add_trace(go.Scatter(
+        x=dates_list + dates_rev,
+        y=list(pct_paths[95]) + list(pct_paths[5][::-1]),
+        fill="toself",
+        fillcolor="rgba(59,130,246,0.10)",
+        line=dict(width=0),
+        name="90% CI",
+        hoverinfo="skip",
+    ))
+    # 50% confidence band (25th – 75th)
+    fig.add_trace(go.Scatter(
+        x=dates_list + dates_rev,
+        y=list(pct_paths[75]) + list(pct_paths[25][::-1]),
+        fill="toself",
+        fillcolor="rgba(59,130,246,0.22)",
+        line=dict(width=0),
+        name="50% CI",
+        hoverinfo="skip",
+    ))
+    # Percentile boundary lines
+    fig.add_trace(go.Scatter(
+        x=dates_list, y=pct_paths[5],
+        mode="lines", name="5th pct",
+        line=dict(color="#ef4444", width=1.2, dash="dot"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates_list, y=pct_paths[95],
+        mode="lines", name="95th pct",
+        line=dict(color="#10b981", width=1.2, dash="dot"),
+    ))
+    # Median path
+    fig.add_trace(go.Scatter(
+        x=dates_list, y=pct_paths[50],
+        mode="lines", name="Median path",
+        line=dict(color="#3b82f6", width=2.5),
+    ))
+    # Current price reference line
+    fig.add_hline(
+        y=current_price, line_dash="dash", line_color="#94a3b8", line_width=1.5,
+        annotation_text=f"  Current ${current_price:.2f}",
+        annotation_position="top right",
+        annotation_font_color="#94a3b8",
+    )
+    fig.update_layout(
+        title=dict(text=f"Monte Carlo Price Simulation — {ticker.upper()}", font=dict(size=16)),
+        xaxis_title="Date",
+        yaxis_title="Price (USD)",
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, r=120),
+    )
+    return fig
+
+
+def plot_terminal_distribution(final_prices, current_price):
+    """Histogram of Monte Carlo terminal prices with key reference lines."""
+    import numpy as np
+
+    mean_p = float(np.mean(final_prices))
+    p10    = float(np.percentile(final_prices, 10))
+    p90    = float(np.percentile(final_prices, 90))
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=final_prices, nbinsx=50,
+        name="Terminal Prices",
+        marker_color="#3b82f6",
+        opacity=0.70,
+    ))
+    fig.add_vline(x=current_price, line_dash="dash",  line_color="#94a3b8", line_width=2,
+                  annotation_text=f"  Current ${current_price:.2f}",
+                  annotation_position="top right", annotation_font_color="#94a3b8")
+    fig.add_vline(x=mean_p,        line_dash="solid", line_color="#10b981", line_width=2,
+                  annotation_text=f"  Mean ${mean_p:.2f}",
+                  annotation_position="top right", annotation_font_color="#10b981")
+    fig.add_vline(x=p10,           line_dash="dot",   line_color="#ef4444", line_width=1.5,
+                  annotation_text=f"  10th pct ${p10:.2f}",
+                  annotation_position="top left",  annotation_font_color="#ef4444")
+    fig.add_vline(x=p90,           line_dash="dot",   line_color="#10b981", line_width=1.5,
+                  annotation_text=f"  90th pct ${p90:.2f}",
+                  annotation_position="top right", annotation_font_color="#10b981")
+    fig.update_layout(
+        title=dict(text="Terminal Price Distribution (Monte Carlo)", font=dict(size=16)),
+        xaxis_title="Price (USD)",
+        yaxis_title="Count",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(t=60),
+    )
+    return fig

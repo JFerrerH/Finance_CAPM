@@ -1,10 +1,13 @@
 import streamlit as st
 import datetime
+import numpy as np
+import pandas as pd
 
 from utils.data import download_ticker_data, get_stock_info
 from utils.fmp import get_sector_pe, get_fmp_income_statement
 from utils.capm import calculate_capm
-from utils.performance import calculate_performance_metrics, calculate_rolling_beta
+from utils.performance import calculate_performance_metrics, calculate_rolling_beta, calculate_var_cvar
+from utils.montecarlo import run_monte_carlo
 from utils.fundamentals import parse_fundamentals, BENCHMARKS
 from utils.valuation import (
     calculate_5yr_cagr_from_fmp,
@@ -21,6 +24,9 @@ from utils.charts import (
     plot_rolling_beta,
     plot_drawdown,
     plot_return_distribution,
+    plot_var_distribution,
+    plot_monte_carlo,
+    plot_terminal_distribution,
 )
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -163,7 +169,7 @@ with st.sidebar:
     st.markdown('<p class="input-label">Navigate</p>', unsafe_allow_html=True)
     page = st.radio(
         "page",
-        ["📊  Dashboard", "📉  Analysis", "📐  Performance", "🏦  Fundamentals", "💰  Valuation", "🗃  Raw Data"],
+        ["📊  Dashboard", "📉  Analysis", "📐  Performance", "🎲  Risk", "🏦  Fundamentals", "💰  Valuation", "🗃  Raw Data"],
         label_visibility="collapsed",
     )
 
@@ -190,8 +196,10 @@ beta  = capm["beta"]
 Rm    = capm["Rm"]
 CAPM  = capm["capm_return"]
 
-perf           = calculate_performance_metrics(data, Rf, beta)
-rolling_beta   = calculate_rolling_beta(data)
+perf             = calculate_performance_metrics(data, Rf, beta)
+rolling_beta     = calculate_rolling_beta(data)
+var_results      = calculate_var_cvar(data["Monthly_Return_Stock"].dropna())
+current_price_mc = float(data_accion["Close"].iloc[-1])
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 def page_header(title, ticker):
@@ -337,6 +345,75 @@ elif page == "📐  Performance":
         plot_return_distribution(data["Monthly_Return_Stock"].dropna()),
         use_container_width=True,
         theme="streamlit",
+    )
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Risk
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "🎲  Risk":
+    page_header("Risk Analysis", ticker_accion)
+
+    returns = data["Monthly_Return_Stock"].dropna()
+
+    # ── VaR / CVaR ─────────────────────────────────────────────────────────────
+    section_divider("Value at Risk — Historical Method")
+    v1, v2, v3, v4 = st.columns(4)
+    v1.metric(
+        "VaR 95% (Monthly)", f"{var_results['var_95']:.2%}",
+        help="At 95% confidence, monthly loss will not exceed this threshold.",
+    )
+    v2.metric(
+        "CVaR 95% (Monthly)", f"{var_results['cvar_95']:.2%}",
+        help="Average loss in the worst 5% of months (Expected Shortfall).",
+    )
+    v3.metric(
+        "VaR 99% (Monthly)", f"{var_results['var_99']:.2%}",
+        help="At 99% confidence, monthly loss will not exceed this threshold.",
+    )
+    v4.metric(
+        "CVaR 99% (Monthly)", f"{var_results['cvar_99']:.2%}",
+        help="Average loss in the worst 1% of months.",
+    )
+
+    section_divider("Return Distribution with VaR Thresholds")
+    st.plotly_chart(
+        plot_var_distribution(returns, var_results),
+        use_container_width=True, theme="streamlit",
+    )
+
+    # ── Monte Carlo ─────────────────────────────────────────────────────────────
+    section_divider("Monte Carlo Simulation — Geometric Brownian Motion")
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        n_sims   = st.slider("Simulations", 100, 1000, 500, step=100)
+    with mc2:
+        n_months = st.slider("Horizon (months)", 6, 60, 24, step=6)
+
+    _, pct_paths, final_prices = run_monte_carlo(
+        returns, current_price_mc, n_sims, n_months,
+    )
+    future_dates = pd.date_range(
+        start=data_accion.index[-1], periods=n_months + 1, freq="MS",
+    )
+
+    st.plotly_chart(
+        plot_monte_carlo(pct_paths, future_dates, current_price_mc, ticker_accion),
+        use_container_width=True, theme="streamlit",
+    )
+
+    # ── Terminal distribution ───────────────────────────────────────────────────
+    section_divider("Terminal Price Distribution")
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("Current Price",   f"${current_price_mc:.2f}")
+    t2.metric("10th Percentile", f"${np.percentile(final_prices, 10):.2f}",
+              help="Pessimistic scenario: only 10% of paths finish below this.")
+    t3.metric("Median (50th)",   f"${np.percentile(final_prices, 50):.2f}")
+    t4.metric("90th Percentile", f"${np.percentile(final_prices, 90):.2f}",
+              help="Optimistic scenario: only 10% of paths finish above this.")
+
+    st.plotly_chart(
+        plot_terminal_distribution(final_prices, current_price_mc),
+        use_container_width=True, theme="streamlit",
     )
 
 # ════════════════════════════════════════════════════════════════════════════════
