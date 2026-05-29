@@ -151,3 +151,96 @@ def plot_valuation_comparison(current_price, pe_price, ddm_price, dcf_price, lyn
     return fig
 
 
+def plot_rolling_beta(rolling_beta, static_beta):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rolling_beta.index, y=rolling_beta.values,
+        mode="lines", name="12-Month Rolling β",
+        line=dict(color="#3b82f6", width=2),
+        fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
+    ))
+    fig.add_hline(
+        y=1.0, line_dash="dot", line_color="#94a3b8", line_width=1.5,
+        annotation_text="  Market β = 1", annotation_position="top right",
+        annotation_font_color="#94a3b8",
+    )
+    fig.add_hline(
+        y=float(static_beta), line_dash="dash", line_color="#f59e0b", line_width=1.5,
+        annotation_text=f"  Static β = {static_beta:.2f}", annotation_position="bottom right",
+        annotation_font_color="#f59e0b",
+    )
+    fig.update_layout(
+        title=dict(text="Rolling 12-Month Beta", font=dict(size=16)),
+        xaxis_title="Date",
+        yaxis_title="Beta (β)",
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, r=120),
+    )
+    return fig
+
+
+def plot_drawdown(drawdown_series):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=drawdown_series.index, y=drawdown_series.values * 100,
+        mode="lines", name="Drawdown",
+        line=dict(color="#ef4444", width=1.5),
+        fill="tozeroy", fillcolor="rgba(239,68,68,0.15)",
+    ))
+    fig.update_layout(
+        title=dict(text="Underwater Chart (Drawdown %)", font=dict(size=16)),
+        xaxis_title="Date",
+        yaxis_title="Drawdown (%)",
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(t=60),
+    )
+    return fig
+
+
+def plot_return_distribution(returns):
+    import numpy as np
+    from scipy import stats
+
+    mean = float(returns.mean())
+    std  = float(returns.std())
+    skew = float(returns.skew())
+    kurt = float(returns.kurt())    # excess kurtosis
+    x    = np.linspace(returns.min(), returns.max(), 300)
+    normal_curve = stats.norm.pdf(x, mean, std)
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=returns,
+        nbinsx=30,
+        name="Monthly Returns",
+        marker_color="#3b82f6",
+        opacity=0.65,
+        histnorm="probability density",
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=normal_curve,
+        mode="lines", name="Normal fit",
+        line=dict(color="#f59e0b", width=2, dash="dash"),
+    ))
+    fig.add_vline(x=0,    line_dash="dot",   line_color="#94a3b8", line_width=1.5)
+    fig.add_vline(x=mean, line_dash="solid", line_color="#10b981", line_width=1.5,
+                  annotation_text=f"  Mean {mean:.2%}", annotation_position="top right",
+                  annotation_font_color="#10b981")
+    fig.update_layout(
+        title=dict(
+            text=f"Return Distribution  |  Skew: {skew:.2f}  |  Excess Kurtosis: {kurt:.2f}",
+            font=dict(size=15),
+        ),
+        xaxis_title="Monthly Return",
+        yaxis_title="Density",
+        hovermode="x unified",
+        barmode="overlay",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60),
+    )
+    return fig

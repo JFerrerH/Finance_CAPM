@@ -4,6 +4,8 @@ import datetime
 from utils.data import download_ticker_data, get_stock_info
 from utils.fmp import get_sector_pe, get_fmp_income_statement
 from utils.capm import calculate_capm
+from utils.performance import calculate_performance_metrics, calculate_rolling_beta
+from utils.fundamentals import parse_fundamentals, BENCHMARKS
 from utils.valuation import (
     calculate_5yr_cagr_from_fmp,
     calculate_pe_fair_value,
@@ -16,6 +18,9 @@ from utils.charts import (
     plot_monthly_returns,
     plot_regression,
     plot_valuation_comparison,
+    plot_rolling_beta,
+    plot_drawdown,
+    plot_return_distribution,
 )
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -158,7 +163,7 @@ with st.sidebar:
     st.markdown('<p class="input-label">Navigate</p>', unsafe_allow_html=True)
     page = st.radio(
         "page",
-        ["📊  Dashboard", "📉  Analysis", "💰  Valuation", "🗃  Raw Data"],
+        ["📊  Dashboard", "📉  Analysis", "📐  Performance", "🏦  Fundamentals", "💰  Valuation", "🗃  Raw Data"],
         label_visibility="collapsed",
     )
 
@@ -184,6 +189,9 @@ capm  = calculate_capm(data, Rf)
 beta  = capm["beta"]
 Rm    = capm["Rm"]
 CAPM  = capm["capm_return"]
+
+perf           = calculate_performance_metrics(data, Rf, beta)
+rolling_beta   = calculate_rolling_beta(data)
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 def page_header(title, ticker):
@@ -222,6 +230,15 @@ if page == "📊  Dashboard":
     c3.metric("Risk-Free Rate", f"{Rf * 100:.2f}%")
     c4.metric("Market Return (Rm)", f"{Rm * 100:.2f}%")
 
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Sharpe Ratio",  f"{perf['sharpe']:.2f}"  if perf['sharpe']  is not None else "N/A",
+              help="(Ann. Return − Rf) / Ann. Volatility")
+    c6.metric("Sortino Ratio", f"{perf['sortino']:.2f}" if perf['sortino'] is not None else "N/A",
+              help="(Ann. Return − Rf) / Downside Deviation")
+    c7.metric("Max Drawdown",  f"{perf['max_drawdown']:.2%}")
+    c8.metric("R² (Fit)",      f"{capm['r_squared']:.4f}",
+              help="% of stock variance explained by the market")
+
     section_divider("Security Market Line")
     st.plotly_chart(plot_sml(Rf, Rm, beta, CAPM, ticker_accion), use_container_width=True, theme="streamlit")
 
@@ -249,8 +266,118 @@ elif page == "📉  Analysis":
         stat_card("Beta (β)", f"{beta:.4f}")
         stat_card("Alpha (α)", f"{capm['intercept']:.4f}")
         stat_card("Correlation", f"{capm['correlation']:.4f}")
-        stat_card("Risk-Free Rate", f"{Rf * 100:.2f}%")
+        stat_card("R²", f"{capm['r_squared']:.4f}")
         stat_card("Mkt. Return (Rm)", f"{Rm * 100:.2f}%")
+
+    section_divider("OLS Diagnostic Tests")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("α p-value",
+              f"{capm['alpha_pvalue']:.4f}",
+              delta="Significant" if capm['alpha_pvalue'] < 0.05 else "Not significant",
+              delta_color="normal" if capm['alpha_pvalue'] < 0.05 else "off",
+              help="Probability alpha ≠ 0 by chance. < 0.05 = statistically significant Jensen's Alpha.")
+    d2.metric("β p-value",
+              f"{capm['beta_pvalue']:.4f}",
+              delta="Significant" if capm['beta_pvalue'] < 0.05 else "Not significant",
+              delta_color="normal" if capm['beta_pvalue'] < 0.05 else "off",
+              help="Probability beta ≠ 0 by chance. Should be < 0.05 for a valid CAPM estimate.")
+    d3.metric("Jensen's α (Ann.)",
+              f"{capm['jensen_alpha_annual']:.2%}",
+              help="Annualised excess return vs. CAPM prediction. Positive = outperformance.")
+
+    section_divider("Risk Decomposition")
+    r1, r2, r3 = st.columns(3)
+    r1.metric("Systematic Risk",   f"{capm['systematic_pct']:.1%}",
+              help="Share of total variance explained by market movements (= R²).")
+    r2.metric("Unsystematic Risk", f"{capm['unsystematic_pct']:.1%}",
+              help="Firm-specific (idiosyncratic) risk that diversification can eliminate.")
+    r3.metric("R² (Goodness of Fit)", f"{capm['r_squared']:.4f}")
+
+    section_divider("Rolling 12-Month Beta")
+    if len(rolling_beta) > 0:
+        st.plotly_chart(plot_rolling_beta(rolling_beta, beta), use_container_width=True, theme="streamlit")
+    else:
+        st.info("Not enough data for rolling beta (need > 12 months).")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Performance & Risk
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "📐  Performance":
+    page_header("Performance & Risk", ticker_accion)
+
+    section_divider("Risk-Adjusted Return Ratios")
+    p1, p2, p3, p4, p5 = st.columns(5)
+    p1.metric("Sharpe Ratio",
+              f"{perf['sharpe']:.2f}" if perf['sharpe'] is not None else "N/A",
+              help="(Ann. Return − Rf) / Ann. Volatility. > 1 = good, > 2 = excellent.")
+    p2.metric("Treynor Ratio",
+              f"{perf['treynor']:.2f}" if perf['treynor'] is not None else "N/A",
+              help="(Ann. Return − Rf) / β. Reward per unit of systematic risk.")
+    p3.metric("Sortino Ratio",
+              f"{perf['sortino']:.2f}" if perf['sortino'] is not None else "N/A",
+              help="(Ann. Return − Rf) / Downside Deviation. Penalises only negative volatility.")
+    p4.metric("Calmar Ratio",
+              f"{perf['calmar']:.2f}" if perf['calmar'] is not None else "N/A",
+              help="Ann. Return / |Max Drawdown|. > 1 = strong risk-adjusted performance.")
+    p5.metric("Jensen's α (Ann.)",
+              f"{capm['jensen_alpha_annual']:.2%}",
+              help="Annualised excess return above the CAPM prediction.")
+
+    section_divider("Summary Stats")
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Ann. Return",    f"{perf['ann_return']:.2%}")
+    s2.metric("Ann. Volatility", f"{perf['ann_vol']:.2%}")
+    s3.metric("Max Drawdown",   f"{perf['max_drawdown']:.2%}")
+
+    section_divider("Underwater Chart")
+    st.plotly_chart(plot_drawdown(perf["drawdown_series"]), use_container_width=True, theme="streamlit")
+
+    section_divider("Return Distribution")
+    st.plotly_chart(
+        plot_return_distribution(data["Monthly_Return_Stock"].dropna()),
+        use_container_width=True,
+        theme="streamlit",
+    )
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Fundamentals
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "🏦  Fundamentals":
+    page_header("Fundamental Ratios", ticker_accion)
+
+    info = get_stock_info(ticker_accion)
+    if not info:
+        st.warning("⚠️ Could not fetch stock info from Yahoo Finance (rate limit). Try again in a few minutes.")
+        st.stop()
+
+    fund = parse_fundamentals(info)
+
+    # Helper to format a value with its unit
+    def _disp(v, suffix=""):
+        return f"{v}{suffix}" if v is not None else "N/A"
+
+    def _render_group(title, metrics_dict, suffix=""):
+        section_divider(title)
+        cols = st.columns(len(metrics_dict))
+        for col, (label, value) in zip(cols, metrics_dict.items()):
+            col.metric(label, _disp(value, suffix), help=BENCHMARKS.get(label))
+
+    _render_group("Valuation Multiples", fund["valuation"], suffix="×")
+    _render_group("Profitability (%)",   fund["profitability"], suffix="%")
+    _render_group("Leverage & Liquidity", fund["leverage"], suffix="×")
+
+    # Growth — mixed units (% and $), render individually
+    section_divider("Growth & Earnings")
+    g = fund["growth"]
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Revenue Growth (YoY)",  _disp(g["Revenue Growth (YoY)"], "%"),
+              help=BENCHMARKS.get("Revenue Growth (YoY)"))
+    g2.metric("Earnings Growth (YoY)", _disp(g["Earnings Growth (YoY)"], "%"),
+              help=BENCHMARKS.get("Earnings Growth (YoY)"))
+    g3.metric("EPS (TTM)",     f"${g['EPS (TTM)']:.2f}" if g["EPS (TTM)"] is not None else "N/A",
+              help=BENCHMARKS.get("EPS (TTM)"))
+    g4.metric("Forward EPS",   f"${g['Forward EPS']:.2f}" if g["Forward EPS"] is not None else "N/A",
+              help=BENCHMARKS.get("Forward EPS"))
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAGE: Valuation
