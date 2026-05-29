@@ -87,7 +87,7 @@ def _abs(series: pd.Series, n: int) -> float | None:
 # Signal computation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def compute_cycle_signals(macro_data: dict) -> dict:
+def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> dict:
     """
     Computes Dalio-inspired cycle signals from the macro data dict.
 
@@ -180,17 +180,51 @@ def compute_cycle_signals(macro_data: dict) -> dict:
     oil = macro_data.get("Oil")
     s["oil_3m"] = round((_pct(oil, 3) or 0) * 100, 1) if oil is not None and len(oil) >= 4 else None
 
+    # ── FRED Economic Data signals ────────────────────────────────────────────
+    # Real economic data (CPI, TIPS breakevens, unemployment, industrial production)
+    # that market prices alone cannot provide. When fred_data is absent the model
+    # degrades gracefully to market-price-only signals.
+    _fd = fred_data or {}
+    s["fred_available"] = bool(_fd)
+
+    # CPI: headline vs core divergence — the definitive supply-shock discriminator.
+    # A wide headline-minus-core spread means inflation is in energy/food (supply side),
+    # not in wages/rents/services (structural demand side).
+    _cpi_hl   = _fd.get("CPI Headline")
+    _cpi_core = _fd.get("CPI Core")
+    cpi_hl_yoy   = round((_pct(_cpi_hl,   12) or 0) * 100, 2) if _cpi_hl   is not None and len(_cpi_hl)   >= 13 else None
+    cpi_core_yoy = round((_pct(_cpi_core, 12) or 0) * 100, 2) if _cpi_core is not None and len(_cpi_core) >= 13 else None
+    cpi_spread   = round(cpi_hl_yoy - cpi_core_yoy, 2) if (cpi_hl_yoy is not None and cpi_core_yoy is not None) else None
+    s.update(cpi_headline_yoy=cpi_hl_yoy, cpi_core_yoy=cpi_core_yoy, cpi_spread=cpi_spread)
+
+    # TIPS breakevens: market-implied inflation expectations.
+    # If TIPS haven't repriced despite a commodity spike, bond markets don't believe
+    # the inflation will persist — a strong transient/geopolitical signal.
+    _tips5  = _fd.get("TIPS 5Y")
+    _tips10 = _fd.get("TIPS 10Y")
+    tips_5y       = round(float(_tips5.iloc[-1]),  2) if _tips5  is not None and not _tips5.empty  else None
+    tips_10y      = round(float(_tips10.iloc[-1]), 2) if _tips10 is not None and not _tips10.empty else None
+    tips_5y_3m    = round(_abs(_tips5,  3) or 0, 3)  if _tips5  is not None and len(_tips5)  >= 4  else None
+    tips_10y_3m   = round(_abs(_tips10, 3) or 0, 3)  if _tips10 is not None and len(_tips10) >= 4  else None
+    s.update(tips_5y=tips_5y, tips_10y=tips_10y, tips_5y_3m_chg=tips_5y_3m, tips_10y_3m_chg=tips_10y_3m)
+
+    # Unemployment: rising unemployment contradicts wage-driven inflation
+    # and confirms a demand-shock / labour-market-softening narrative.
+    _unemp = _fd.get("Unemployment")
+    unemp_current = round(float(_unemp.iloc[-1]), 1) if _unemp is not None and not _unemp.empty else None
+    unemp_3m_chg  = round(_abs(_unemp, 3) or 0, 2)  if _unemp is not None and len(_unemp) >= 4  else None
+    s.update(unemployment=unemp_current, unemployment_3m_chg=unemp_3m_chg)
+
+    # Industrial Production: manufacturing activity proxy (PMI-like directional indicator).
+    # Declining INDPRO during an apparent inflationary episode supports supply-shock diagnosis.
+    _indpro = _fd.get("Industrial Prod")
+    indpro_3m = round((_pct(_indpro, 3) or 0) * 100, 2) if _indpro is not None and len(_indpro) >= 4 else None
+    s["indpro_3m"] = indpro_3m
+
     # ── Geopolitical supply-shock filter ──────────────────────────────────────
-    # Detects commodity surges driven by geopolitical events (supply shocks) rather
-    # than structural demand-pull inflation, which would otherwise corrupt the cycle
-    # classification (e.g. Strait of Hormuz closure → oil spike → false Stagflation read).
-    #
-    # Three-level approach:
-    #   Level 1 — Oil/Gold divergence: oil spiking hard while gold lags → supply shock
-    #   Level 2 — DXY separator: dollar strengthening WITH elevated inflation → risk-off
-    #             capital flight, not demand-pull (structural inflation weakens the dollar)
-    #   Level 3 — Persistence filter: if the recent 3M gold move dominates the 6M trend,
-    #             the "inflation" is a spike not yet embedded in the cycle
+    # Combines market-price signals (Levels 1-3) with real economic data (Level 4)
+    # to detect commodity surges driven by geopolitical events rather than structural
+    # demand-pull inflation (e.g. Strait of Hormuz → oil spike → false Stagflation read).
     gold_3m_raw = _pct(gold, 3) if gold is not None and len(gold) >= 4 else None
     gold_3m_pct = (gold_3m_raw or 0.0) * 100        # e.g. 8.5 means +8.5%
     gold_6m_pct = s.get("gold_6m") or 0.0           # already in % pts
@@ -215,13 +249,34 @@ def compute_cycle_signals(macro_data: dict) -> dict:
         and gold_3m_pct <= gold_6m_pct * 0.60
     )
 
-    geopolitical_warning   = geo_oil_gold or geo_dxy_infl
+    # Level 4: Real economic data confirmation (requires FRED)
+    # CPI spread: headline running >1.5pp above core → energy/food driven, not wages/services
+    geo_cpi_spread = (
+        cpi_spread is not None
+        and cpi_core_yoy is not None
+        and cpi_spread > 1.5
+        and cpi_core_yoy < 3.5
+    )
+    # TIPS stable: bond market not repricing inflation expectations despite commodity spike
+    geo_tips_stable = (
+        tips_5y is not None
+        and tips_5y_3m is not None
+        and abs(tips_5y_3m) < 0.30   # < 30 bp move in 3M
+    )
+    # If FRED confirms structural inflation (core entrenched + TIPS elevated), override persistence
+    fred_confirms_structural = (
+        cpi_core_yoy is not None and cpi_core_yoy > 4.0
+        and tips_5y is not None and tips_5y > 3.0
+    )
+    if fred_confirms_structural:
+        inflation_persistent = True   # real data overrides the market-price persistence filter
+
+    geopolitical_warning   = geo_oil_gold or geo_dxy_infl or geo_cpi_spread
     s["inflation_signal_raw"] = infl_sig
     geo_adjustment_applied    = False
 
-    # If the warning fires AND inflation is a spike (not persistent) → downgrade the
-    # inflation signal to avoid a false Stagflation / Inflationary Boom classification
-    if geopolitical_warning and not inflation_persistent and infl_sig == "Elevated":
+    # If the warning fires AND inflation is NOT confirmed structural → downgrade the signal
+    if geopolitical_warning and not inflation_persistent and not fred_confirms_structural and infl_sig == "Elevated":
         s["inflation_signal"] = "Moderate"
         geo_adjustment_applied = True
 
@@ -236,18 +291,31 @@ def compute_cycle_signals(macro_data: dict) -> dict:
             "Dollar strengthening while inflation reads elevated — "
             "consistent with geopolitical risk-off capital flight, not structural inflation"
         )
-    if geopolitical_warning and not inflation_persistent and gold_6m_pct > 0:
+    if geo_cpi_spread and cpi_hl_yoy is not None and cpi_core_yoy is not None:
+        _geo_parts.append(
+            f"CPI headline {cpi_hl_yoy:.1f}% vs core {cpi_core_yoy:.1f}% "
+            f"({cpi_spread:+.1f}pp spread) — inflation concentrated in energy/food, not broad-based"
+        )
+    if geo_tips_stable and geopolitical_warning and tips_5y is not None and tips_5y_3m is not None:
+        _geo_parts.append(
+            f"5Y TIPS breakeven at {tips_5y:.2f}% with only {tips_5y_3m * 100:+.0f}bp move in 3M — "
+            "bond market not pricing persistent inflation"
+        )
+    if geopolitical_warning and not inflation_persistent and gold_6m_pct > 0 and not geo_cpi_spread:
         _geo_parts.append(
             f"Gold's recent 3M gain (+{gold_3m_pct:.0f}%) dominated its 6M trend "
             f"(+{gold_6m_pct:.0f}%) — suggests transient spike, not embedded inflation"
         )
 
-    s["geopolitical_warning"]   = geopolitical_warning
-    s["geo_oil_gold_signal"]    = geo_oil_gold
-    s["geo_dxy_signal"]         = geo_dxy_infl
-    s["inflation_persistent"]   = inflation_persistent
-    s["geo_adjustment_applied"] = geo_adjustment_applied
-    s["geo_shock_detail"]       = " · ".join(_geo_parts) if _geo_parts else ""
+    s["geopolitical_warning"]    = geopolitical_warning
+    s["geo_oil_gold_signal"]     = geo_oil_gold
+    s["geo_dxy_signal"]          = geo_dxy_infl
+    s["geo_cpi_spread_signal"]   = geo_cpi_spread
+    s["geo_tips_stable_signal"]  = geo_tips_stable
+    s["fred_confirms_structural"] = fred_confirms_structural
+    s["inflation_persistent"]    = inflation_persistent
+    s["geo_adjustment_applied"]  = geo_adjustment_applied
+    s["geo_shock_detail"]        = " · ".join(_geo_parts) if _geo_parts else ""
 
     # ── Dalio Cycle Phase ─────────────────────────────────────────────────────
     growth    = s.get("growth_signal",    "—")
@@ -370,13 +438,27 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
     vix_rising  = vix_3m >  0.15   # VIX up >15% in 3M = stress building
     vix_falling = vix_3m < -0.15   # VIX down >15% = fear subsiding
 
+    # ── FRED-derived maturity signals (None-safe: all False when FRED unavailable) ──
+    # These supplement the market-price signals above without breaking behaviour
+    # when no FRED key is configured.
+    unrate_rising   = (s.get("unemployment_3m_chg") or 0) >  0.30  # labour market softening
+    unrate_falling  = (s.get("unemployment_3m_chg") or 0) < -0.30  # labour market recovering
+    indpro_weak     = (s.get("indpro_3m") or 0) < -0.50            # industrial activity declining
+    indpro_strong   = (s.get("indpro_3m") or 0) >  0.50            # industrial activity recovering
+    cpi_core_high   = (s.get("cpi_core_yoy") or 0) >  4.0          # core CPI entrenched → more tightening
+    tips_5y_low     = 0 < (s.get("tips_5y") or 0) < 2.50           # inflation expectations anchored
+    tips_5y_high    = (s.get("tips_5y") or 0) > 3.0                # inflation expectations elevated
+
     # ── Phase-specific maturity scoring ──────────────────────────────────────
     m: dict = {}
 
     if phase == "Goldilocks":
-        # Late signs: rates rising, gold picking up (inflation building), VIX bottoming
-        late_count = sum([rate_rising, gold_3m > 0.05, vix_rising, infl_accel])
-        early_count = sum([growth_accel, vix_falling, not rate_rising])
+        # Late signs: rates rising, gold picking up (inflation building), VIX bottoming,
+        # labour softening (unrate rising = demand starting to crack under rate pressure)
+        late_count = sum([rate_rising, gold_3m > 0.05, vix_rising, infl_accel, unrate_rising])
+        # Early signs: growth re-accelerating, fear subsiding, rates not yet rising,
+        # inflation expectations still anchored (TIPS low = no structural inflation fear yet)
+        early_count = sum([growth_accel, vix_falling, not rate_rising, tips_5y_low])
 
         if late_count >= 2:
             m.update(
@@ -425,10 +507,14 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
             )
 
     elif phase == "Inflationary Boom":
-        # Late signs: growth rolling over (sp_3m < 0), rates very high, yield curve stress
+        # Late signs: growth rolling over, rates very high, labour market softening,
+        # core CPI entrenched (means Fed has no off-ramp — tightening must continue)
         growth_fading = sp_3m < 0 and sp_6m_val > -0.03   # recent months flipping negative
-        late_count  = sum([rate_high and rate_rising, growth_fading or growth_decelerating, vix_rising])
-        early_count = sum([growth_accel, not rate_high, infl_accel and not growth_fading])
+        late_count  = sum([rate_high and rate_rising, growth_fading or growth_decelerating,
+                           vix_rising, cpi_core_high, unrate_rising])
+        # Early signs: growth still strong, rates not yet biting, industrial activity healthy
+        early_count = sum([growth_accel, not rate_high, infl_accel and not growth_fading,
+                           indpro_strong])
 
         if late_count >= 2:
             next_p = "Stagflation" if not infl_decelerating else "Deflationary Bust"
@@ -477,10 +563,13 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
             )
 
     elif phase == "Stagflation":
-        # Late signs: inflation rolling over (gold falling), growth stabilising (sp_3m improving)
+        # Late signs: inflation rolling over (gold falling, core CPI peaking), growth stabilising
+        # TIPS elevated then falling = inflation expectations finally cracking → pivot approaching
         inflation_rolling_over = infl_decelerating or gold_3m < -0.02
-        late_count  = sum([inflation_rolling_over, growth_stabilising, vix_falling])
-        early_count = sum([not inflation_rolling_over, growth_decelerating, vix_rising])
+        late_count  = sum([inflation_rolling_over, growth_stabilising, vix_falling,
+                           tips_5y_high and infl_decelerating])
+        # Early signs: inflation still accelerating, growth decelerating, industrial activity weak
+        early_count = sum([not inflation_rolling_over, growth_decelerating, vix_rising, indpro_weak])
 
         if late_count >= 2:
             m.update(
@@ -527,9 +616,12 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
             )
 
     elif phase == "Deflationary Bust":
-        # Late signs: growth stabilising/recovering, VIX falling, rates down sharply
-        late_count  = sum([growth_stabilising or growth_accel, vix_falling, rate_falling])
-        early_count = sum([growth_decelerating, vix_rising, not rate_falling])
+        # Late signs: growth stabilising, VIX falling, rates down, industrial activity recovering,
+        # unemployment falling (labour market turning — the clearest leading recovery signal)
+        late_count  = sum([growth_stabilising or growth_accel, vix_falling, rate_falling,
+                           indpro_strong, unrate_falling])
+        # Early signs: growth declining, fear building, industrial activity still weak
+        early_count = sum([growth_decelerating, vix_rising, not rate_falling, indpro_weak])
 
         if late_count >= 2:
             m.update(

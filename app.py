@@ -23,6 +23,7 @@ from utils.valuation import (
     calculate_lynch_fair_value,
 )
 from utils.macro import get_macro_data, compute_cycle_signals, macro_implication
+from utils.fred import get_economic_data
 from utils.scoring import (
     score_alpha, score_risk_return, score_momentum,
     score_financial_health, score_valuation, score_macro_fit,
@@ -326,10 +327,12 @@ elif page == "📍  Thesis":
     )
 
     # Macro cycle for context
-    today_str  = datetime.date.today().isoformat()
+    today_str   = datetime.date.today().isoformat()
     start_macro = (datetime.date.today() - datetime.timedelta(days=730)).isoformat()
-    macro_data = get_macro_data(start_macro, today_str)
-    signals    = compute_cycle_signals(macro_data)
+    macro_data  = get_macro_data(start_macro, today_str)
+    fred_api_key = st.secrets.get("fred", {}).get("api_key", "")
+    fred_data   = get_economic_data(fred_api_key, start_macro, today_str) if fred_api_key else {}
+    signals     = compute_cycle_signals(macro_data, fred_data)
     cycle_phase = signals.get("cycle_phase", "Transition")
 
     # ── Compute scores ────────────────────────────────────────────────────────
@@ -642,13 +645,15 @@ elif page == "🌍  Macro":
     start_macro = (datetime.date.today() - datetime.timedelta(days=1095)).isoformat()  # 3 years
 
     with st.spinner("Loading macro data…"):
-        macro_data = get_macro_data(start_macro, today_str)
+        macro_data   = get_macro_data(start_macro, today_str)
+        fred_api_key = st.secrets.get("fred", {}).get("api_key", "")
+        fred_data    = get_economic_data(fred_api_key, start_macro, today_str) if fred_api_key else {}
 
     if not macro_data:
         st.warning("Could not load macro data. Please try again later.")
         st.stop()
 
-    signals = compute_cycle_signals(macro_data)
+    signals = compute_cycle_signals(macro_data, fred_data)
 
     # ── KPI strip ─────────────────────────────────────────────────────────────
     section_divider("Current Market Conditions")
@@ -820,6 +825,96 @@ elif page == "🌍  Macro":
         {stage_desc}
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Economic Fundamentals (FRED) ─────────────────────────────────────────
+    section_divider("Economic Fundamentals")
+    if not signals.get("fred_available"):
+        st.info(
+            "**Connect FRED for real economic data** — CPI headline vs core, TIPS breakevens, "
+            "unemployment, and industrial production. These are the signals that distinguish a "
+            "geopolitical supply shock from structural inflation.\n\n"
+            "Get a free API key at **fred.stlouisfed.org** and add it to "
+            "`.streamlit/secrets.toml` under `[fred]` → `api_key`.",
+            icon="🏦",
+        )
+    else:
+        ef1, ef2, ef3, ef4, ef5, ef6 = st.columns(6)
+
+        cpi_hl  = signals.get("cpi_headline_yoy")
+        cpi_c   = signals.get("cpi_core_yoy")
+        spread  = signals.get("cpi_spread")
+        ef1.metric(
+            "CPI Headline (YoY)",
+            f"{cpi_hl:.1f}%" if cpi_hl is not None else "—",
+            f"Spread vs core: {spread:+.1f}pp" if spread is not None else None,
+        )
+        ef2.metric(
+            "CPI Core (YoY)",
+            f"{cpi_c:.1f}%" if cpi_c is not None else "—",
+            "ex food & energy",
+        )
+
+        unemp     = signals.get("unemployment")
+        unemp_chg = signals.get("unemployment_3m_chg")
+        ef3.metric(
+            "Unemployment",
+            f"{unemp:.1f}%" if unemp is not None else "—",
+            f"{unemp_chg:+.2f}pp (3M)" if unemp_chg is not None else None,
+        )
+
+        tips5     = signals.get("tips_5y")
+        tips5_chg = signals.get("tips_5y_3m_chg")
+        ef4.metric(
+            "TIPS 5Y Breakeven",
+            f"{tips5:.2f}%" if tips5 is not None else "—",
+            f"{tips5_chg * 100:+.0f} bp (3M)" if tips5_chg is not None else None,
+        )
+
+        tips10     = signals.get("tips_10y")
+        tips10_chg = signals.get("tips_10y_3m_chg")
+        ef5.metric(
+            "TIPS 10Y Breakeven",
+            f"{tips10:.2f}%" if tips10 is not None else "—",
+            f"{tips10_chg * 100:+.0f} bp (3M)" if tips10_chg is not None else None,
+        )
+
+        indpro = signals.get("indpro_3m")
+        ef6.metric(
+            "Industrial Prod. (3M)",
+            f"{indpro:+.1f}%" if indpro is not None else "—",
+            "manufacturing activity proxy",
+        )
+
+        # CPI spread interpretation — the key supply-shock vs structural discriminator
+        if spread is not None and cpi_hl is not None and cpi_c is not None:
+            if spread > 1.5:
+                st.caption(
+                    f"⚠️ Headline CPI is running **{spread:.1f}pp above core** "
+                    f"({cpi_hl:.1f}% vs {cpi_c:.1f}%) — inflation is concentrated in energy and food. "
+                    "This pattern is typical of a supply-side shock, not structural demand-pull inflation. "
+                    "If oil prices normalise, headline inflation should fall rapidly toward core."
+                )
+            elif spread < 0.5 and cpi_hl > 2.5:
+                st.caption(
+                    f"📌 Headline and core CPI are moving together ({spread:.1f}pp spread) — "
+                    "broad-based inflation across goods and services. "
+                    "This is a structural demand-pull signal, not a commodity spike."
+                )
+
+        # TIPS breakeven interpretation
+        if tips5 is not None and tips5_chg is not None:
+            tips5_bp = tips5_chg * 100
+            if abs(tips5_bp) < 15 and signals.get("geopolitical_warning"):
+                st.caption(
+                    f"📌 5Y TIPS breakeven moved only {tips5_bp:+.0f}bp in 3 months despite the commodity "
+                    "surge — bond markets are not pricing persistent inflation. "
+                    "This supports the supply-shock (transient) interpretation."
+                )
+            elif tips5_bp > 30:
+                st.caption(
+                    f"⚠️ 5Y TIPS breakeven repriced +{tips5_bp:.0f}bp in 3 months — "
+                    "inflation expectations are moving structurally, not just reacting to a spot price spike."
+                )
 
     # ── Normalised trend chart ────────────────────────────────────────────────
     section_divider("Macro Trend History (3 Years)")
@@ -1278,4 +1373,19 @@ elif page == "🗃  Raw Data":
             data_indice[["Close", "Monthly_Return_Index"]].dropna(),
             use_container_width=True,
         )
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="
+    margin-top: 48px;
+    padding: 16px 0 8px 0;
+    border-top: 1px solid rgba(148,163,184,0.18);
+    text-align: center;
+    font-size: 0.75rem;
+    opacity: 0.45;
+    line-height: 1.8;
+">
+    This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.
+</div>
+""", unsafe_allow_html=True)
 
