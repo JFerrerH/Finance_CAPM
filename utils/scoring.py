@@ -60,6 +60,39 @@ SCORE_WEIGHTS = {
 
 # Sector tilt per Dalio cycle phase: +1 if sector benefits, -1 if sector suffers.
 # Applied on top of the beta-based score to capture structural industry dynamics.
+# Sector-specific benchmarks for margin and revenue growth scoring.
+# A 20% net margin is average for SaaS, exceptional for retail, impossible for utilities.
+# Keyed by yfinance sector strings. Tuples: (high_threshold, mid_threshold).
+SECTOR_MARGIN_BENCH = {
+    "Technology":             (0.20, 0.10),
+    "Communication Services": (0.15, 0.08),
+    "Healthcare":             (0.15, 0.07),
+    "Financial Services":     (0.20, 0.10),
+    "Financials":             (0.20, 0.10),
+    "Consumer Defensive":     (0.10, 0.05),
+    "Consumer Cyclical":      (0.07, 0.03),
+    "Industrials":            (0.09, 0.04),
+    "Energy":                 (0.09, 0.04),
+    "Materials":              (0.10, 0.05),
+    "Real Estate":            (0.22, 0.12),
+    "Utilities":              (0.12, 0.06),
+}
+
+SECTOR_GROWTH_BENCH = {
+    "Technology":             (0.15, 0.07),
+    "Communication Services": (0.10, 0.05),
+    "Healthcare":             (0.10, 0.05),
+    "Financial Services":     (0.08, 0.04),
+    "Financials":             (0.08, 0.04),
+    "Consumer Defensive":     (0.06, 0.03),
+    "Consumer Cyclical":      (0.08, 0.04),
+    "Industrials":            (0.08, 0.04),
+    "Energy":                 (0.05, 0.02),
+    "Materials":              (0.07, 0.03),
+    "Real Estate":            (0.06, 0.03),
+    "Utilities":              (0.04, 0.02),
+}
+
 SECTOR_CYCLE_TILT = {
     "Goldilocks": {
         "positive": {"Technology", "Consumer Cyclical", "Communication Services",
@@ -142,38 +175,46 @@ def score_momentum(perf: dict, capm: dict) -> tuple[int, str]:
 
 
 def score_financial_health(
-    inc: dict, cf: dict | None, bal: dict | None
+    inc: dict, cf: dict | None, bal: dict | None, sector: str = ""
 ) -> tuple[int | None, str]:
-    """Revenue growth + earnings growth + margin + FCF + leverage."""
+    """
+    Revenue growth + earnings growth + margin + FCF + leverage.
+    Thresholds are sector-normalised — a 20% net margin is average for SaaS
+    but exceptional for retail, so universal cutoffs misrank businesses.
+    """
     if not inc or not inc.get("revenue"):
         return None, "Financial data unavailable"
+
+    # Pull sector-specific benchmarks (fall back to sensible universal defaults)
+    margin_high, margin_mid = SECTOR_MARGIN_BENCH.get(sector, (0.15, 0.07))
+    growth_high, growth_mid = SECTOR_GROWTH_BENCH.get(sector, (0.12, 0.05))
 
     pts = 3.0
     detail_parts: list[str] = []
 
-    # Revenue CAGR
+    # Revenue CAGR — benchmarked against sector norms
     rev_cagr = calc_cagr(inc.get("revenue"))
     if rev_cagr is not None:
         detail_parts.append(f"Rev CAGR {rev_cagr:+.0%}")
-        if   rev_cagr >  0.12: pts += 0.8
-        elif rev_cagr >  0.05: pts += 0.3
-        elif rev_cagr <  0.00: pts -= 1.0
+        if   rev_cagr >  growth_high: pts += 0.8
+        elif rev_cagr >  growth_mid:  pts += 0.3
+        elif rev_cagr <  0.00:        pts -= 1.0
 
     # Net income CAGR
     ni_cagr = calc_cagr(inc.get("net_income"))
     if ni_cagr is not None:
-        if   ni_cagr >  0.12: pts += 0.5
-        elif ni_cagr <  0.00: pts -= 0.5
+        if   ni_cagr >  growth_high: pts += 0.5
+        elif ni_cagr <  0.00:        pts -= 0.5
 
-    # Net margin (most recent year)
+    # Net margin — benchmarked against sector norms
     rev_list = inc.get("revenue") or []
     ni_list  = inc.get("net_income") or []
     if rev_list and ni_list and rev_list[-1]:
         margin = ni_list[-1] / rev_list[-1]
         detail_parts.append(f"Margin {margin:.0%}")
-        if   margin >  0.20: pts += 0.5
-        elif margin >  0.10: pts += 0.2
-        elif margin <  0.00: pts -= 0.8
+        if   margin >  margin_high: pts += 0.5
+        elif margin >  margin_mid:  pts += 0.2
+        elif margin <  0.00:        pts -= 0.8
 
     # FCF generation
     fcf_list = (cf or {}).get("fcf") or []

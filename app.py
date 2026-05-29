@@ -273,10 +273,38 @@ def price_delta(fair, current):
 if page == "📊  Dashboard":
     page_header("Dashboard", ticker_accion)
 
+    # ── Liquidity / market-cap guardrail ─────────────────────────────────────
+    _info_dash = get_stock_info(ticker_accion)
+    if _info_dash:
+        _mcap   = _info_dash.get("marketCap")
+        _avgvol = _info_dash.get("averageVolume")
+        if _mcap and _mcap < 300_000_000:
+            st.warning(
+                f"**Micro-cap alert:** market cap ${_mcap/1e6:.0f}M. "
+                "CAPM assumptions (continuous liquidity, no price impact) may not hold. "
+                "Beta and alpha estimates carry wider uncertainty for thinly traded securities.",
+                icon="⚠️",
+            )
+        elif _mcap and _mcap < 1_000_000_000:
+            st.info(
+                f"**Small-cap:** market cap ${_mcap/1e6:.0f}M. "
+                "Estimates are valid but liquidity risk and estimation noise are higher than large-caps.",
+                icon="ℹ️",
+            )
+        if _avgvol and _avgvol < 500_000:
+            st.warning(
+                f"**Low liquidity:** avg. daily volume {_avgvol:,} shares. "
+                "Bid-ask spreads may inflate measured volatility and distort monthly return data.",
+                icon="⚠️",
+            )
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("CAPM Expected Return", f"{CAPM:.2f}%")
+    _ci_low  = capm.get("beta_ci_low",  beta)
+    _ci_high = capm.get("beta_ci_high", beta)
     c2.metric("Beta (β)", f"{beta:.2f}",
-              delta=f"{beta - 1:+.2f} vs market", delta_color="off")
+              delta=f"95% CI  [{_ci_low:.2f}, {_ci_high:.2f}]", delta_color="off",
+              help="OLS point estimate ± 1.96 × standard error. Wide interval = unreliable beta.")
     c3.metric("Risk-Free Rate", f"{Rf * 100:.2f}%")
     c4.metric("Market Return (Rm)", f"{Rm * 100:.2f}%")
 
@@ -345,7 +373,7 @@ elif page == "📍  Thesis":
     s_alpha   = score_alpha(capm)
     s_risk    = score_risk_return(perf)
     s_mom     = score_momentum(perf, capm)
-    s_fin     = score_financial_health(inc, cf, bal)
+    s_fin     = score_financial_health(inc, cf, bal, sector)
     s_val     = score_valuation(current_price, dcf_price, pe_fair, ddm_price)
     s_macro   = score_macro_fit(signals, beta, sector)
 
@@ -494,6 +522,7 @@ elif page == "📉  Analysis":
     with stats_col:
         st.markdown("<br>", unsafe_allow_html=True)
         stat_card("Beta (β)", f"{beta:.4f}")
+        stat_card("β 95% CI", f"[{capm.get('beta_ci_low', beta):.3f}, {capm.get('beta_ci_high', beta):.3f}]")
         stat_card("Alpha (α)", f"{capm['intercept']:.4f}")
         stat_card("Correlation", f"{capm['correlation']:.4f}")
         stat_card("R²", f"{capm['r_squared']:.4f}")
@@ -523,9 +552,14 @@ elif page == "📉  Analysis":
               help="Firm-specific (idiosyncratic) risk that diversification can eliminate.")
     r3.metric("R² (Goodness of Fit)", f"{capm['r_squared']:.4f}")
 
-    section_divider("Rolling 12-Month Beta")
-    if len(rolling_beta) > 0:
-        st.plotly_chart(plot_rolling_beta(rolling_beta, beta), use_container_width=True, theme="streamlit")
+    section_divider("Rolling Beta")
+    _window = st.slider(
+        "Rolling window (months)", min_value=6, max_value=36, value=12, step=3,
+        help="Shorter windows react faster but produce noisier estimates. 12–24M is standard.",
+    )
+    _rolling = calculate_rolling_beta(data, window=_window)
+    if len(_rolling) > 0:
+        st.plotly_chart(plot_rolling_beta(_rolling, beta), use_container_width=True, theme="streamlit")
     else:
         st.info("Not enough data for rolling beta (need > 12 months).")
 

@@ -13,9 +13,12 @@ def calculate_capm(data, Rf):
     capm_return = (Rf * 100) + (beta * ((Rm - Rf) * 100))
 
     # OLS diagnostics
-    r_squared = float(lm.rsquared)
+    r_squared    = float(lm.rsquared)
     alpha_pvalue = float(lm.pvalues.iloc[0])
     beta_pvalue  = float(lm.pvalues.iloc[1])
+    beta_se      = float(lm.bse.iloc[1])          # standard error of beta
+    beta_ci_low  = float(beta) - 1.96 * beta_se   # 95% confidence interval
+    beta_ci_high = float(beta) + 1.96 * beta_se
 
     # Annualised Jensen's Alpha (compound)
     # The raw OLS intercept = Jensen's α + Rf/12 * (1 - β), so we must subtract
@@ -41,9 +44,12 @@ def calculate_capm(data, Rf):
         "Y": Y,
         "y_pred": y_pred,
         # Diagnostics
-        "r_squared": r_squared,
+        "r_squared":    r_squared,
         "alpha_pvalue": alpha_pvalue,
-        "beta_pvalue": beta_pvalue,
+        "beta_pvalue":  beta_pvalue,
+        "beta_se":      beta_se,
+        "beta_ci_low":  beta_ci_low,
+        "beta_ci_high": beta_ci_high,
         "jensen_alpha_annual": jensen_alpha_annual,
         "systematic_pct": systematic_pct,
         "unsystematic_pct": 1.0 - systematic_pct,
