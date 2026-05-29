@@ -391,7 +391,7 @@ elif page == "📍  Thesis":
     bull_pts, bear_pts = build_bull_bear(
         capm, perf, var_results or {},
         inc, cf, bal,
-        valuation_upside, cycle_phase, beta,
+        valuation_upside, cycle_phase, beta, sector,
     )
 
     # ── Verdict banner ────────────────────────────────────────────────────────
@@ -612,24 +612,34 @@ elif page == "🎲  Risk":
     returns = data["Monthly_Return_Stock"].dropna()
 
     # ── VaR / CVaR ─────────────────────────────────────────────────────────────
-    section_divider("Value at Risk — Historical Method")
+    section_divider("Value at Risk — Historical vs Parametric (Monthly)")
     v1, v2, v3, v4 = st.columns(4)
     v1.metric(
-        "VaR 95% (Monthly)", f"{var_results['var_95']:.2%}",
-        help="At 95% confidence, monthly loss will not exceed this threshold.",
+        "VaR 95% — Historical", f"{var_results['var_95']:.2%}",
+        help="5th percentile of actual monthly returns. No distributional assumption.",
     )
     v2.metric(
+        "VaR 95% — Parametric", f"{var_results.get('param_var_95', 0):.2%}",
+        help="μ − 1.645σ assuming normality. Gap vs historical = fat-tail risk.",
+    )
+    v3.metric(
         "CVaR 95% (Monthly)", f"{var_results['cvar_95']:.2%}",
         help="Average loss in the worst 5% of months (Expected Shortfall).",
     )
-    v3.metric(
-        "VaR 99% (Monthly)", f"{var_results['var_99']:.2%}",
-        help="At 99% confidence, monthly loss will not exceed this threshold.",
-    )
     v4.metric(
-        "CVaR 99% (Monthly)", f"{var_results['cvar_99']:.2%}",
-        help="Average loss in the worst 1% of months.",
+        "VaR 99% — Historical", f"{var_results['var_99']:.2%}",
+        help="1st percentile of actual monthly returns.",
     )
+
+    _hist_95  = var_results.get("var_95", 0)
+    _param_95 = var_results.get("param_var_95", 0)
+    _gap      = abs(_hist_95 - _param_95)
+    if _gap > 0.02:
+        st.caption(
+            f"⚠️ Historical VaR ({_hist_95:.1%}) differs from parametric ({_param_95:.1%}) "
+            f"by {_gap:.1%} — the return distribution has meaningful fat tails. "
+            "Parametric VaR underestimates true downside risk for this stock."
+        )
 
     section_divider("Return Distribution with VaR Thresholds")
     st.plotly_chart(

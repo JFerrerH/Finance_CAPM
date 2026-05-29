@@ -231,7 +231,19 @@ def score_financial_health(
         if   de > 3.0: pts -= 0.5
         elif de < 1.0: pts += 0.2
 
-    return _clamp(pts), " | ".join(detail_parts[:4]) or "Limited data"
+    # Interest coverage ratio: operating income / |interest expense|
+    # Measures ability to service debt — D/E alone misses this (high debt is fine if earnings cover it).
+    oi_list   = inc.get("operating_income") or []
+    int_list  = inc.get("interest_expense") or []
+    if oi_list and int_list and int_list[-1] and int_list[-1] != 0:
+        coverage = oi_list[-1] / abs(int_list[-1])
+        detail_parts.append(f"Int. cov. {coverage:.1f}x")
+        if   coverage > 8:  pts += 0.3
+        elif coverage > 3:  pts += 0.1
+        elif coverage < 1:  pts -= 0.8   # cannot cover interest — high distress risk
+        elif coverage < 2:  pts -= 0.3
+
+    return _clamp(pts), " | ".join(detail_parts[:5]) or "Limited data"
 
 
 def score_valuation(
@@ -368,6 +380,7 @@ def build_bull_bear(
     valuation_upside: float | None,
     cycle_phase: str,
     beta: float,
+    sector: str = "",
 ) -> tuple[list[str], list[str]]:
     """
     Returns (bull_points, bear_points) — each a list of plain strings.
@@ -402,21 +415,23 @@ def build_bull_bear(
         bull.append(f"Defensive beta ({beta:.2f}) — cushions against market sell-offs")
 
     # ── Revenue growth ────────────────────────────────────────────────────────
+    growth_high, _ = SECTOR_GROWTH_BENCH.get(sector, (0.12, 0.05))
     rev_cagr = calc_cagr((inc or {}).get("revenue"))
-    if rev_cagr and rev_cagr > 0.10:
-        bull.append(f"Revenue compounding at {rev_cagr:.0%} CAGR — strong topline momentum")
+    if rev_cagr and rev_cagr > growth_high:
+        bull.append(f"Revenue compounding at {rev_cagr:.0%} CAGR — above-sector growth")
     elif rev_cagr and rev_cagr < 0:
         bear.append(f"Declining revenue ({rev_cagr:.0%} CAGR) — topline under pressure")
 
     # ── Margin ────────────────────────────────────────────────────────────────
+    margin_high, _ = SECTOR_MARGIN_BENCH.get(sector, (0.15, 0.07))
     rev_list = (inc or {}).get("revenue") or []
     ni_list  = (inc or {}).get("net_income") or []
     if rev_list and ni_list and rev_list[-1]:
         margin = ni_list[-1] / rev_list[-1]
-        if margin > 0.20:
-            bull.append(f"High-quality business with {margin:.0%} net margin")
+        if margin > margin_high:
+            bull.append(f"Above-sector net margin of {margin:.0%} — high-quality earnings")
         elif margin < 0:
-            bear.append(f"Company is currently loss-making ({margin:.0%} net margin)")
+            bear.append(f"Currently loss-making ({margin:.0%} net margin)")
 
     # ── FCF ───────────────────────────────────────────────────────────────────
     fcf_list = (cf or {}).get("fcf") or []

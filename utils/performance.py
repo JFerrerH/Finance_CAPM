@@ -59,16 +59,33 @@ def calculate_rolling_beta(data, window=12):
 
 def calculate_var_cvar(returns, confidence_levels=(0.95, 0.99)):
     """
-    Historical Value at Risk and Conditional VaR (Expected Shortfall).
-    Values are expressed as monthly returns — negative means loss.
-    e.g. var_95 = -0.035 means: at 95% confidence, monthly loss won't exceed 3.5%.
+    Historical and parametric Value at Risk + Conditional VaR (Expected Shortfall).
+    All values are monthly returns — negative means loss.
+    e.g. var_95 = -0.035 → at 95% confidence, monthly loss won't exceed 3.5%.
+
+    Historical VaR: uses the actual return distribution (no normality assumption).
+    Parametric VaR: assumes normality (μ − z·σ). The two diverge during calm or
+    stress periods — a wide gap signals the return distribution has fat tails.
     """
+    # Standard normal z-scores for common confidence levels
+    Z_SCORES = {0.95: 1.6449, 0.99: 2.3263}
+
+    mu    = float(returns.mean())
+    sigma = float(returns.std())
     results = {}
+
     for cl in confidence_levels:
         cl_pct = int(cl * 100)
+
+        # Historical VaR / CVaR
         var  = float(np.percentile(returns, (1 - cl) * 100))
         tail = returns[returns <= var]
         cvar = float(tail.mean()) if len(tail) > 0 else var
         results[f"var_{cl_pct}"]  = var
         results[f"cvar_{cl_pct}"] = cvar
+
+        # Parametric VaR (normal distribution assumption)
+        z = Z_SCORES.get(cl, 1.6449)
+        results[f"param_var_{cl_pct}"] = mu - z * sigma
+
     return results

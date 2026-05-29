@@ -104,23 +104,26 @@ def extract_income_data(income_df: pd.DataFrame) -> dict:
     gross_profit     = _find_row(df, "Gross Profit")
     rd               = _find_row(df, "Research And Development", "R&D Expenses")
     sga              = _find_row(df, "Selling General And Administrative", "SG&A")
-    operating_income = _find_row(df, "Operating Income", "EBIT", "Total Operating Income")
-    pretax_income    = _find_row(df, "Pretax Income", "Income Before Tax")
-    tax              = _find_row(df, "Tax Provision", "Income Tax Expense")
-    net_income       = _find_row(df, "Net Income", "Net Income Common Stockholders")
+    operating_income  = _find_row(df, "Operating Income", "EBIT", "Total Operating Income")
+    pretax_income     = _find_row(df, "Pretax Income", "Income Before Tax")
+    tax               = _find_row(df, "Tax Provision", "Income Tax Expense")
+    net_income        = _find_row(df, "Net Income", "Net Income Common Stockholders")
+    interest_expense  = _find_row(df, "Interest Expense", "Interest And Debt Expense",
+                                  "Net Interest Income", "Net Non Operating Interest Income Expense")
 
     ref = revenue if revenue is not None else net_income
     return {
-        "revenue":          _vals(revenue),
-        "cost_of_revenue":  _vals(cost_of_revenue),
-        "gross_profit":     _vals(gross_profit),
-        "rd":               _vals(rd),
-        "sga":              _vals(sga),
-        "operating_income": _vals(operating_income),
-        "pretax_income":    _vals(pretax_income),
-        "tax":              _vals(tax),
-        "net_income":       _vals(net_income),
-        "years":            _years(ref),
+        "revenue":           _vals(revenue),
+        "cost_of_revenue":   _vals(cost_of_revenue),
+        "gross_profit":      _vals(gross_profit),
+        "rd":                _vals(rd),
+        "sga":               _vals(sga),
+        "operating_income":  _vals(operating_income),
+        "pretax_income":     _vals(pretax_income),
+        "tax":               _vals(tax),
+        "net_income":        _vals(net_income),
+        "interest_expense":  _vals(interest_expense),
+        "years":             _years(ref),
     }
 
 
