@@ -92,6 +92,13 @@ def calculate_5yr_cagr_from_fmp(df, field):
 
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_stock_info(ticker):
+    try:
+        return yf.Ticker(ticker).get_info()
+    except Exception:
+        return {}
+
 # === Clean and download functions ===
 def clean_column_names(df):
     if isinstance(df.columns, pd.MultiIndex):
@@ -210,8 +217,11 @@ with tabs[4]:
 with st.tabs(["Fair Value Estimations"])[0]:
     st.write("### Fair Price Estimations for", ticker_accion.upper())
 
-    stock = yf.Ticker(ticker_accion)
-    info = stock.get_info()
+    info = get_stock_info(ticker_accion)
+
+    if not info:
+        st.warning("⚠️ Could not fetch stock info from Yahoo Finance (rate limit). Fair value estimations are unavailable. Try again in a few minutes.")
+        st.stop()
 
     current_price = info.get("currentPrice")
     eps = info.get("trailingEps")
