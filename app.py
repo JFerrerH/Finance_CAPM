@@ -361,6 +361,7 @@ elif page == "📍  Thesis":
     )
 
     # ── Verdict banner ────────────────────────────────────────────────────────
+    geo_tag = " ⚠️" if signals.get("geo_adjustment_applied") else ""
     st.markdown(f"""
     <div style="
         background: {verdict_color}22;
@@ -375,10 +376,26 @@ elif page == "📍  Thesis":
         <div style="font-size: 2.8rem; font-weight: 800; color: {verdict_color};
                     letter-spacing: 1px;">{verdict}</div>
         <div style="font-size: 1rem; margin-top: 10px; opacity: 0.65;">
-            Composite score: <b>{avg_score:.1f} / 5</b> &nbsp;·&nbsp; Macro: {signals.get('cycle_icon','')} {cycle_phase}
+            Composite score: <b>{avg_score:.1f} / 5</b> &nbsp;·&nbsp; Macro: {signals.get('cycle_icon','')} {cycle_phase}{geo_tag}
         </div>
     </div>
     """, unsafe_allow_html=True)
+    if signals.get("geopolitical_warning"):
+        raw = signals.get("inflation_signal_raw", "Elevated")
+        if signals.get("geo_adjustment_applied"):
+            st.warning(
+                f"**Geopolitical filter active:** The inflation signal was elevated by what appears to be "
+                f"a supply-driven commodity shock (raw signal: {raw}). The cycle classification and macro score "
+                "have been adjusted to reduce false-positive risk. See the Macro Environment page for full detail.",
+                icon="⚠️",
+            )
+        else:
+            st.info(
+                "**Geopolitical overlay detected:** Market signals show a possible supply-driven commodity "
+                "spike, but the inflation trend is persistent enough that no classification adjustment was made. "
+                "The macro score reflects current cycle positioning including this geopolitical premium.",
+                icon="ℹ️",
+            )
 
     # ── Score breakdown chart ─────────────────────────────────────────────────
     section_divider("Score Breakdown")
@@ -666,6 +683,49 @@ elif page == "🌍  Macro":
     k6.metric("Oil (3M)",
               f"{oil3:+.1f}%" if oil3 is not None else "—")
 
+    # ── Geopolitical supply-shock warning ────────────────────────────────────
+    if signals.get("geopolitical_warning"):
+        adj     = signals.get("geo_adjustment_applied", False)
+        detail  = signals.get("geo_shock_detail", "")
+        raw_sig = signals.get("inflation_signal_raw", "Elevated")
+        if adj:
+            adj_note = (
+                f"The raw inflation signal was <b>{raw_sig}</b>. "
+                "Based on the supply-shock pattern (oil/gold divergence + dollar strength + "
+                "spike recency), the cycle classification has been adjusted to <b>Moderate</b> "
+                "inflation to reduce false-positive risk. Monitor whether these signals persist — "
+                "if they do, the original classification will reassert itself."
+            )
+            banner_color = "#f59e0b"
+        else:
+            adj_note = (
+                "Geopolitical signals are present but the inflation trend appears persistent enough "
+                "(built over 6+ months) that no classification adjustment was made. "
+                "The current cycle phase reflects both the geopolitical overlay and the underlying macro. "
+                "Watch for commodity prices normalising, which would confirm the shock is temporary."
+            )
+            banner_color = "#f97316"
+        st.markdown(f"""
+        <div style="
+            background: rgba(245,158,11,0.08);
+            border-left: 4px solid {banner_color};
+            border-radius: 8px;
+            padding: 16px 22px;
+            margin: 16px 0 4px 0;
+        ">
+            <div style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
+                        letter-spacing:1.2px;color:{banner_color};margin-bottom:8px;">
+                ⚠️ Geopolitical Supply-Shock Signal Detected
+            </div>
+            <div style="font-size:0.9rem;line-height:1.65;opacity:0.88;margin-bottom:10px;">
+                {detail}
+            </div>
+            <div style="font-size:0.85rem;line-height:1.6;opacity:0.68;font-style:italic;">
+                {adj_note}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # ── Dalio quadrant + cycle description ────────────────────────────────────
     section_divider("Economic Cycle Positioning")
     q_col, desc_col = st.columns([1, 1], gap="large")
@@ -698,6 +758,68 @@ elif page == "🌍  Macro":
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ── Cycle maturity ────────────────────────────────────────────────────────
+    section_divider("Where Are We Within This Phase?")
+
+    stage       = signals.get("cycle_stage", "Unclear")
+    stage_pct   = signals.get("cycle_stage_pct", 50)
+    stage_color = signals.get("cycle_stage_color", "#94a3b8")
+    next_phase  = signals.get("cycle_next_phase", "—")
+    next_icon   = signals.get("cycle_next_icon", "")
+    watch       = signals.get("cycle_watch_signal", "—")
+    t_risk      = signals.get("cycle_transition_risk", "—")
+    stage_desc  = signals.get("cycle_stage_desc", "")
+
+    m_left, m_right = st.columns([1, 1], gap="large")
+
+    with m_left:
+        # Progress bar + stage badge
+        bar_filled = "█" * int(stage_pct / 10)
+        bar_empty  = "░" * (10 - int(stage_pct / 10))
+        st.markdown(f"""
+        <div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.18);
+             border-radius:10px;padding:20px 24px;">
+            <div style="font-size:0.8rem;opacity:0.55;text-transform:uppercase;
+                        letter-spacing:1.5px;margin-bottom:8px;">Cycle Stage</div>
+            <div style="font-size:2rem;font-weight:800;color:{stage_color};margin-bottom:10px;">
+                {stage}
+            </div>
+            <div style="font-family:monospace;font-size:1.1rem;color:{stage_color};margin-bottom:6px;">
+                {bar_filled}{bar_empty} ~{stage_pct}%
+            </div>
+            <div style="font-size:0.82rem;opacity:0.55;">approximate progress through {signals.get('cycle_phase','—')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with m_right:
+        # Next phase + watch signal
+        st.markdown(f"""
+        <div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.18);
+             border-radius:10px;padding:20px 24px;">
+            <div style="font-size:0.8rem;opacity:0.55;text-transform:uppercase;
+                        letter-spacing:1.5px;margin-bottom:8px;">Likely Next Phase</div>
+            <div style="font-size:1.5rem;font-weight:700;margin-bottom:12px;">
+                {next_icon} {next_phase}
+            </div>
+            <div style="font-size:0.88rem;opacity:0.75;margin-bottom:8px;">
+                <b>Transition risk:</b> {t_risk}
+            </div>
+            <div style="font-size:0.88rem;opacity:0.75;">
+                <b>📡 Watch:</b> {watch}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Maturity narrative
+    st.markdown(f"""
+    <div style="margin-top:16px;padding:16px 20px;
+         background:rgba(148,163,184,0.05);
+         border-left:3px solid {stage_color};border-radius:0 8px 8px 0;
+         font-size:0.95rem;line-height:1.7;">
+        {stage_desc}
+    </div>
+    """, unsafe_allow_html=True)
 
     # ── Normalised trend chart ────────────────────────────────────────────────
     section_divider("Macro Trend History (3 Years)")
