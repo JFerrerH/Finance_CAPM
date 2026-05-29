@@ -884,6 +884,67 @@ elif page == "🌍  Macro":
     </div>
     """, unsafe_allow_html=True)
 
+    # ── Big Cycle (Dalio long-term debt cycle) ───────────────────────────────
+    if signals.get("bc_available"):
+        section_divider("Long-term Debt Cycle — Dalio Big Cycle")
+
+        bc_phase = signals.get("bc_phase", "Unclear")
+        bc_color = signals.get("bc_color", "#94a3b8")
+        bc_icon  = signals.get("bc_icon",  "⚖️")
+        bc_desc  = signals.get("bc_desc",  "")
+        bc_note  = signals.get("bc_short_cycle_note", "")
+
+        bm1, bm2, bm3, bm4 = st.columns(4)
+        _dg     = signals.get("bc_debt_gdp")
+        _dg_tr  = signals.get("bc_debt_gdp_trend")
+        _rr     = signals.get("bc_real_rate")
+        _m2     = signals.get("bc_m2_growth_12m")
+        _ff     = signals.get("bc_fed_funds")
+
+        bm1.metric(
+            "Federal Debt / GDP",
+            f"{_dg:.1f}%" if _dg is not None else "—",
+            f"{_dg_tr:+.1f}pp (3Y trend)" if _dg_tr is not None else None,
+            help="Total federal debt as % of GDP. Above 90% Dalio flags as structurally concerning.",
+        )
+        bm2.metric(
+            "Real 10Y Rate",
+            f"{_rr:+.2f}%" if _rr is not None else "—",
+            "Financial repression" if (_rr is not None and _rr < 0) else (
+                "Restrictive" if (_rr is not None and _rr > 1.5) else "Neutral"
+            ),
+            help="Nominal 10Y yield minus 10Y TIPS breakeven. Negative = real debt burden declining via inflation.",
+        )
+        bm3.metric(
+            "M2 Growth (12M)",
+            f"{_m2:+.1f}%" if _m2 is not None else "—",
+            "Monetization signal" if (_m2 is not None and _m2 > 8) else None,
+            help="M2 money supply 12-month growth. >8% while debt is high signals debt monetization.",
+        )
+        bm4.metric(
+            "Federal Funds Rate",
+            f"{_ff:.2f}%" if _ff is not None else "—",
+            help="Effective Federal Funds Rate — the primary monetary policy lever.",
+        )
+
+        st.markdown(f"""
+        <div style="
+            background:{bc_color}12;
+            border-left:4px solid {bc_color};
+            border-radius:8px;
+            padding:18px 22px;
+            margin-top:14px;
+        ">
+            <div style="font-size:1.3rem;font-weight:700;color:{bc_color};margin-bottom:8px;">
+                {bc_icon} {bc_phase}
+            </div>
+            <div style="line-height:1.7;margin-bottom:{'10px' if bc_note else '0'};">
+                {bc_desc}
+            </div>
+            {"<div style='font-size:0.88rem;opacity:0.75;font-style:italic;border-top:1px solid rgba(148,163,184,0.2);padding-top:10px;margin-top:4px;'><b>Short-cycle context:</b> " + bc_note + "</div>" if bc_note else ""}
+        </div>
+        """, unsafe_allow_html=True)
+
     # ── Economic Fundamentals (FRED) ─────────────────────────────────────────
     section_divider("Economic Fundamentals")
     if not signals.get("fred_available"):

@@ -3,13 +3,18 @@ utils/fred.py
 -------------
 Fetches real economic data from the St. Louis Fed (FRED) public API.
 
-Series fetched:
+Short-cycle series (used in geopolitical filter and economic fundamentals):
     CPIAUCSL  — CPI All Urban Consumers, All Items (headline inflation)
-    CPILFESL  — CPI ex Food & Energy (core inflation — structural vs supply-shock discriminator)
+    CPILFESL  — CPI ex Food & Energy (core inflation)
     UNRATE    — Civilian Unemployment Rate
-    T5YIE     — 5-Year Breakeven Inflation Rate (market-implied inflation expectations)
+    T5YIE     — 5-Year Breakeven Inflation Rate
     T10YIE    — 10-Year Breakeven Inflation Rate
     INDPRO    — Industrial Production Index (manufacturing activity proxy)
+
+Big Cycle series (Dalio long-term debt cycle positioning):
+    GFDEGDQ188S — Federal Debt as % of GDP (quarterly)
+    M2SL        — M2 Money Supply (monthly)
+    FEDFUNDS    — Effective Federal Funds Rate (monthly)
 
 Requires a free FRED API key from https://fred.stlouisfed.org/docs/api/api_key.html
 Add to .streamlit/secrets.toml:
@@ -24,14 +29,20 @@ import streamlit as st
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
-# (series_id, frequency): 'm' = monthly, 'd' = daily (resampled to month-end)
+# (series_id, frequency): 'm' = monthly, 'd' = daily, 'q' = quarterly
+# Daily and quarterly series are resampled to month-end for consistency.
 FRED_SERIES: dict[str, tuple[str, str]] = {
-    "CPI Headline":    ("CPIAUCSL", "m"),
-    "CPI Core":        ("CPILFESL", "m"),
-    "Unemployment":    ("UNRATE",   "m"),
-    "TIPS 5Y":         ("T5YIE",    "d"),
-    "TIPS 10Y":        ("T10YIE",   "d"),
-    "Industrial Prod": ("INDPRO",   "m"),
+    # Short-cycle / geopolitical filter
+    "CPI Headline":    ("CPIAUCSL",      "m"),
+    "CPI Core":        ("CPILFESL",      "m"),
+    "Unemployment":    ("UNRATE",        "m"),
+    "TIPS 5Y":         ("T5YIE",         "d"),
+    "TIPS 10Y":        ("T10YIE",        "d"),
+    "Industrial Prod": ("INDPRO",        "m"),
+    # Big Cycle (Dalio long-term debt cycle)
+    "Debt/GDP":        ("GFDEGDQ188S",   "q"),   # Federal Debt as % of GDP
+    "M2":              ("M2SL",          "m"),   # M2 Money Supply
+    "Fed Funds":       ("FEDFUNDS",      "m"),   # Effective Federal Funds Rate
 }
 
 
@@ -72,7 +83,7 @@ def get_economic_data(api_key: str, start: str, end: str) -> dict:
                 continue
 
             series = pd.DataFrame(records).set_index("date")["value"]
-            if freq == "d":
+            if freq in ("d", "q"):   # daily and quarterly both resample to month-end
                 series = series.resample("ME").last()
             result[name] = series.dropna()
 

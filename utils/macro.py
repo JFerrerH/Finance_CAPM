@@ -385,7 +385,183 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     # ── Cycle maturity assessment ─────────────────────────────────────────────
     s.update(_assess_maturity(s, macro_data))
 
+    # ── Big Cycle (Dalio long-term debt cycle) ────────────────────────────────
+    s.update(_compute_big_cycle(s, _fd))
+
     return s
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Big Cycle — Dalio long-term debt supercycle positioning
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _compute_big_cycle(s: dict, fred_data: dict) -> dict:
+    """
+    Estimates the current position in Dalio's Long-term Debt Cycle using
+    federal debt/GDP, real interest rates, M2 money supply growth, and the
+    Federal Funds Rate.
+
+    The Big Cycle spans decades and describes the accumulation and eventual
+    deleveraging of debt relative to income. It provides structural context
+    for the short-term cycle — a Goldilocks reading at peak debt levels is
+    far more fragile than the same reading in an early-expansion environment.
+
+    Phases (Dalio, 'Principles for Navigating Big Debt Crises'):
+        Early Expansion   — debt moderate and productive, few structural constraints
+        Late Expansion    — debt elevated and still rising, fragility building
+        Monetization/Top  — debt at extremes, central bank suppressing real rates
+        At the Top        — peak leverage, tightening unusually painful
+        Deleveraging      — debt/GDP declining through austerity / restructuring
+        Beautiful Deleveraging — nominal growth > debt growth, soft landing
+
+    Returns a flat dict prefixed with 'bc_' for easy identification.
+    """
+    bc: dict = {"bc_available": False}
+    if not fred_data:
+        return bc
+
+    debt_gdp_s  = fred_data.get("Debt/GDP")
+    m2_s        = fred_data.get("M2")
+    fedfunds_s  = fred_data.get("Fed Funds")
+
+    # Need at least debt/GDP to say anything meaningful
+    if debt_gdp_s is None or debt_gdp_s.empty:
+        return bc
+    bc["bc_available"] = True
+
+    # ── Debt / GDP ────────────────────────────────────────────────────────────
+    debt_gdp_now = round(float(debt_gdp_s.iloc[-1]), 1)
+    n_trend = min(36, len(debt_gdp_s) - 1)   # up to 3 years of trend
+    debt_gdp_trend = round(float(debt_gdp_s.iloc[-1]) - float(debt_gdp_s.iloc[-1 - n_trend]), 1)
+    bc["bc_debt_gdp"]       = debt_gdp_now
+    bc["bc_debt_gdp_trend"] = debt_gdp_trend   # pp change over n_trend months
+
+    # ── Real interest rate: nominal 10Y minus 10Y TIPS breakeven ─────────────
+    rate_nominal = s.get("rate_current")          # already in % (e.g. 4.35)
+    tips_10y_val = s.get("tips_10y")              # already in % from FRED
+    if rate_nominal is not None and tips_10y_val is not None:
+        real_rate = round(rate_nominal - tips_10y_val, 2)
+    elif rate_nominal is not None:
+        real_rate = round(rate_nominal - 2.5, 2)  # fallback: assume 2.5% expected inflation
+    else:
+        real_rate = None
+    bc["bc_real_rate"] = real_rate
+
+    # ── M2 growth (12-month % change) ─────────────────────────────────────────
+    if m2_s is not None and len(m2_s) >= 13:
+        bc["bc_m2_growth_12m"] = round((_pct(m2_s, 12) or 0) * 100, 1)
+    else:
+        bc["bc_m2_growth_12m"] = None
+
+    # ── Federal Funds Rate ────────────────────────────────────────────────────
+    if fedfunds_s is not None and not fedfunds_s.empty:
+        bc["bc_fed_funds"] = round(float(fedfunds_s.iloc[-1]), 2)
+    else:
+        bc["bc_fed_funds"] = None
+
+    # ── Phase classification ───────────────────────────────────────────────────
+    debt_high      = debt_gdp_now > 90
+    debt_very_high = debt_gdp_now > 115
+    debt_rising    = debt_gdp_trend > 5
+    debt_falling   = debt_gdp_trend < -5
+
+    real_neg        = real_rate is not None and real_rate < 0
+    real_deeply_neg = real_rate is not None and real_rate < -1.5
+    real_positive   = real_rate is not None and real_rate > 0.5
+
+    m2_growth  = bc.get("bc_m2_growth_12m") or 0
+    m2_surging = m2_growth > 8
+
+    if not debt_high and debt_rising:
+        bc.update(
+            bc_phase = "Early Expansion",
+            bc_icon  = "🌱",
+            bc_color = "#10b981",
+            bc_desc  = (
+                "Debt levels are moderate and rising productively. The long-term cycle "
+                "is in early-to-mid expansion — credit is available, structural headwinds "
+                "are limited, and short-cycle signals are reliable at face value."
+            ),
+            bc_short_cycle_note = "Short-cycle signals can be taken at face value — no structural debt overlay.",
+        )
+    elif debt_high and debt_rising and not debt_very_high:
+        bc.update(
+            bc_phase = "Late Expansion",
+            bc_icon  = "⚡",
+            bc_color = "#f59e0b",
+            bc_desc  = (
+                "Debt/GDP is elevated and still rising — hallmarks of late-cycle debt expansion. "
+                "Short-term growth can persist, but structural fragility is building. "
+                "Dalio identifies this as the period when debt service begins constraining future growth "
+                "and central bank tightening becomes unusually potent."
+            ),
+            bc_short_cycle_note = "Apply a fragility discount to bullish short-cycle readings — debt levels limit policy response room.",
+        )
+    elif debt_very_high and (real_neg or m2_surging):
+        bc.update(
+            bc_phase = "Monetization / Top",
+            bc_icon  = "🖨️",
+            bc_color = "#ef4444",
+            bc_desc  = (
+                "Debt/GDP is at historically extreme levels and real interest rates are negative "
+                "or money supply is expanding rapidly — the central bank is suppressing real rates "
+                "to reduce the real burden of debt. This is Dalio's monetization phase: "
+                "debt is being inflated away rather than paid down. "
+                "Hard assets (gold, commodities, real estate) benefit; "
+                "long-duration bonds face structural headwinds."
+            ),
+            bc_short_cycle_note = "Goldilocks readings in this context are structurally fragile — inflation is being used as a policy tool.",
+        )
+    elif debt_very_high and real_positive:
+        bc.update(
+            bc_phase = "At the Top",
+            bc_icon  = "🔔",
+            bc_color = "#ef4444",
+            bc_desc  = (
+                "Debt/GDP is at historically extreme levels with positive real interest rates — "
+                "debt service costs are rising in real terms, which is unusually painful "
+                "at these leverage levels. This is Dalio's 'at the top' configuration: "
+                "further rate increases carry outsized systemic risk, "
+                "and the next downturn may require aggressive policy intervention."
+            ),
+            bc_short_cycle_note = "High debt + positive real rates = tightening has maximum bite. Downturns may be amplified.",
+        )
+    elif debt_falling and real_deeply_neg and m2_surging:
+        bc.update(
+            bc_phase = "Beautiful Deleveraging",
+            bc_icon  = "🔄",
+            bc_color = "#6366f1",
+            bc_desc  = (
+                "Debt/GDP is declining while nominal growth (aided by money creation) exceeds "
+                "debt growth — Dalio's 'beautiful deleveraging.' The pain of debt reduction "
+                "is balanced by enough monetary stimulus to prevent deflationary collapse. "
+                "This is the rare soft-landing path out of excessive debt."
+            ),
+            bc_short_cycle_note = "Regime is healing — short-cycle signals are gaining reliability as the debt overhang clears.",
+        )
+    elif debt_falling:
+        bc.update(
+            bc_phase = "Deleveraging",
+            bc_icon  = "📉",
+            bc_color = "#94a3b8",
+            bc_desc  = (
+                "Debt/GDP is declining — the system is in a deleveraging phase involving "
+                "some combination of austerity, debt restructuring, wealth redistribution, "
+                "and monetization. Growth is structurally subdued; short-cycle expansions "
+                "tend to be shallower and more fragile than historical norms."
+            ),
+            bc_short_cycle_note = "Structural deleveraging suppresses the amplitude of short-cycle recoveries.",
+        )
+    else:
+        bc.update(
+            bc_phase = "Transition / Unclear",
+            bc_icon  = "⚖️",
+            bc_color = "#94a3b8",
+            bc_desc  = "Big Cycle signals are mixed. Interpret short-cycle positioning without a strong long-term structural view.",
+            bc_short_cycle_note = "",
+        )
+
+    return bc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
