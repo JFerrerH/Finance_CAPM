@@ -130,6 +130,7 @@ div[data-testid="metric-container"] {
 .page-header {
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 1.2rem;
 }
@@ -189,6 +190,327 @@ div[data-testid="metric-container"] {
     content: "";
     flex: 1;
     border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+/* ── Component classes ──────────────────────────────────────────────────────── */
+
+/* Verdict banner */
+.verdict-banner {
+    border-radius: 12px;
+    padding: 28px 36px;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.verdict-sub {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+}
+.verdict-title {
+    font-size: 2.8rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+.verdict-meta {
+    font-size: 1rem;
+    margin-top: 10px;
+    opacity: 0.65;
+}
+
+/* Bull / Bear case cards */
+.bull-card {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+.bull-card-title {
+    color: #10b981;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 12px;
+}
+.bear-card {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 16px 20px;
+}
+.bear-card-title {
+    color: #ef4444;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 12px;
+}
+
+/* Geopolitical warning banner */
+.geo-warning {
+    border-radius: 8px;
+    padding: 16px 22px;
+    margin: 16px 0 4px 0;
+}
+.geo-warning-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+}
+.geo-warning-body {
+    font-size: 0.9rem;
+    line-height: 1.65;
+    opacity: 0.88;
+    margin-bottom: 10px;
+}
+.geo-warning-note {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    opacity: 0.68;
+    font-style: italic;
+}
+
+/* Dalio cycle description card */
+.cycle-desc-card {
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 60px;
+}
+.cycle-desc-phase {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.cycle-desc-text {
+    line-height: 1.7;
+    margin-bottom: 16px;
+}
+.cycle-desc-pos {
+    opacity: 0.7;
+    font-size: 0.9rem;
+}
+
+/* Cycle stage / next phase cards */
+.cycle-stage-card {
+    background: rgba(148, 163, 184, 0.07);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 10px;
+    padding: 20px 24px;
+}
+.cycle-stage-label {
+    font-size: 0.8rem;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+}
+.cycle-stage-value {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+.cycle-stage-bar {
+    font-family: monospace;
+    font-size: 1.1rem;
+    margin-bottom: 6px;
+}
+.cycle-stage-sub {
+    font-size: 0.82rem;
+    opacity: 0.55;
+}
+.cycle-next-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+.cycle-stage-detail {
+    font-size: 0.88rem;
+    opacity: 0.75;
+    margin-bottom: 8px;
+}
+
+/* ── Tablet (769px – 1024px) ─────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    div[data-testid="metric-container"] {
+        padding: 14px 16px !important;
+        border-radius: 10px !important;
+    }
+    .verdict-banner { padding: 22px 28px !important; }
+    .verdict-title { font-size: 2.2rem !important; }
+    .cycle-desc-card { margin-top: 0 !important; }
+}
+
+/* ── Mobile (≤ 768px) ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+
+    div[data-testid="metric-container"] {
+        padding: 10px 12px !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stMetricLabel"] label,
+    div[data-testid="stMetricLabel"] p,
+    div[data-testid="stMetricLabel"] > div {
+        font-size: 0.7rem !important;
+        line-height: 1.2 !important;
+    }
+    div[data-testid="stMetricValue"] > div,
+    div[data-testid="stMetricValue"] span {
+        font-size: 1rem !important;
+        line-height: 1.2 !important;
+    }
+    div[data-testid="stMetricDelta"] > div,
+    div[data-testid="stMetricDelta"] p {
+        font-size: 0.68rem !important;
+    }
+
+    .page-header { gap: 6px !important; margin-bottom: 0.8rem !important; }
+    .page-header h2 { font-size: 1.2rem !important; }
+
+    .stat-card { padding: 10px 12px !important; margin-bottom: 6px !important; }
+    .stat-value { font-size: 1.1rem !important; }
+    .stat-label { font-size: 0.7rem !important; }
+
+    .section-divider {
+        margin: 0.85rem 0 0.6rem 0 !important;
+        font-size: 0.7rem !important;
+    }
+
+    .verdict-banner { padding: 16px 18px !important; margin-bottom: 16px !important; }
+    .verdict-title { font-size: 1.75rem !important; }
+    .verdict-meta { font-size: 0.85rem !important; }
+    .verdict-sub { font-size: 0.75rem !important; letter-spacing: 1.5px !important; }
+
+    .bull-card, .bear-card { padding: 12px 14px !important; }
+    .bull-card-title, .bear-card-title {
+        font-size: 0.95rem !important;
+        margin-bottom: 8px !important;
+    }
+
+    .geo-warning { padding: 12px 14px !important; }
+    .geo-warning-title { font-size: 0.75rem !important; }
+    .geo-warning-body { font-size: 0.82rem !important; }
+    .geo-warning-note { font-size: 0.78rem !important; }
+
+    .cycle-desc-card { padding: 14px 16px !important; margin-top: 0 !important; }
+    .cycle-desc-phase { font-size: 1.25rem !important; }
+    .cycle-desc-pos { font-size: 0.82rem !important; }
+
+    .cycle-stage-card { padding: 14px 16px !important; }
+    .cycle-stage-value { font-size: 1.6rem !important; }
+    .cycle-next-value { font-size: 1.25rem !important; }
+    .cycle-stage-bar { font-size: 0.95rem !important; }
+
+    .sidebar-brand { font-size: 1.15rem !important; }
+    .sidebar-sub { font-size: 0.73rem !important; }
+}
+
+/* ── Phone (≤ 640px): metric row layout + column stacking ───────────────── */
+/*
+ * Two goals:
+ *  1. Transform metric cards from tall vertical stacks into compact inline rows:
+ *     label on the left (0.7rem, muted), value on the right (0.95rem, bold),
+ *     delta tucked below right-aligned.  Matches professional finance app patterns
+ *     (Bloomberg, Investing.com) and cuts per-card height from ~90px to ~48px.
+ *  2. Stack all layout columns to full-width; exception: KPI blocks with 4+
+ *     metric columns get a 2-per-row grid (dashboard rows, macro KPI strip, etc.)
+ *
+ *  Uses !important throughout because Streamlit injects inline style="width: …"
+ *  on every column element which otherwise beats stylesheet rules.
+ */
+@media (max-width: 640px) {
+
+    /* ── Compact metric row: label ←    → value ── */
+    div[data-testid="metric-container"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        padding: 8px 10px !important;
+        border-radius: 8px !important;
+        gap: 0 !important;
+        box-shadow: none !important;
+        min-height: 0 !important;
+    }
+    /* Label — left side, truncated if long */
+    div[data-testid="stMetricLabel"] {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stMetricLabel"] label,
+    div[data-testid="stMetricLabel"] p,
+    div[data-testid="stMetricLabel"] > div {
+        font-size: 0.7rem !important;
+        font-weight: 500 !important;
+        opacity: 0.6 !important;
+        line-height: 1.3 !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+    }
+    /* Value — right side */
+    div[data-testid="stMetricValue"] {
+        flex: 0 0 auto !important;
+        margin: 0 !important;
+        padding: 0 0 0 6px !important;
+        text-align: right !important;
+        min-width: 0 !important;
+    }
+    div[data-testid="stMetricValue"] > div,
+    div[data-testid="stMetricValue"] div,
+    div[data-testid="stMetricValue"] span {
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+    }
+    /* Delta — own row, right-aligned */
+    div[data-testid="stMetricDelta"] {
+        flex: 0 0 100% !important;
+        margin: 1px 0 0 0 !important;
+        padding: 0 !important;
+    }
+    div[data-testid="stMetricDelta"] > div {
+        justify-content: flex-end !important;
+        font-size: 0.62rem !important;
+    }
+    div[data-testid="stMetricDelta"] p {
+        font-size: 0.62rem !important;
+    }
+
+    /* ── Column stacking (full-width by default) ── */
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        row-gap: 8px !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 0 0 100% !important;
+        flex-basis: 100% !important;
+    }
+
+    /* ── 2-column KPI grid: blocks with 4+ metric columns ── */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)):has(div[data-testid="metric-container"]) {
+        gap: 6px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"]:nth-child(4)):has(div[data-testid="metric-container"]) > div[data-testid="column"] {
+        width: calc(50% - 3px) !important;
+        min-width: calc(50% - 3px) !important;
+        flex: 0 0 calc(50% - 3px) !important;
+        flex-basis: calc(50% - 3px) !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -403,19 +725,10 @@ elif page == "📍  Thesis":
     # ── Verdict banner ────────────────────────────────────────────────────────
     geo_tag = " ⚠️" if signals.get("geo_adjustment_applied") else ""
     st.markdown(f"""
-    <div style="
-        background: {verdict_color}22;
-        border: 2px solid {verdict_color};
-        border-radius: 12px;
-        padding: 28px 36px;
-        text-align: center;
-        margin-bottom: 24px;
-    ">
-        <div style="font-size: 0.9rem; opacity: 0.7; text-transform: uppercase;
-                    letter-spacing: 2px; margin-bottom: 6px;">Investment Verdict</div>
-        <div style="font-size: 2.8rem; font-weight: 800; color: {verdict_color};
-                    letter-spacing: 1px;">{verdict}</div>
-        <div style="font-size: 1rem; margin-top: 10px; opacity: 0.65;">
+    <div class="verdict-banner" style="background: {verdict_color}22; border: 2px solid {verdict_color};">
+        <div class="verdict-sub">Investment Verdict</div>
+        <div class="verdict-title" style="color: {verdict_color};">{verdict}</div>
+        <div class="verdict-meta">
             Composite score: <b>{avg_score:.1f} / 5</b> &nbsp;·&nbsp; Macro: {signals.get('cycle_icon','')} {cycle_phase}{geo_tag}
         </div>
     </div>
@@ -455,10 +768,8 @@ elif page == "📍  Thesis":
 
     with col_bull:
         st.markdown("""
-        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);
-             border-radius:8px;padding:16px 20px;">
-        <div style="color:#10b981;font-weight:700;font-size:1.05rem;margin-bottom:12px;">
-        ✅ Bull Case</div>
+        <div class="bull-card">
+        <div class="bull-card-title">✅ Bull Case</div>
         """, unsafe_allow_html=True)
         if bull_pts:
             for pt in bull_pts:
@@ -469,10 +780,8 @@ elif page == "📍  Thesis":
 
     with col_bear:
         st.markdown("""
-        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);
-             border-radius:8px;padding:16px 20px;">
-        <div style="color:#ef4444;font-weight:700;font-size:1.05rem;margin-bottom:12px;">
-        ❌ Bear Case</div>
+        <div class="bear-card">
+        <div class="bear-card-title">❌ Bear Case</div>
         """, unsafe_allow_html=True)
         if bear_pts:
             for pt in bear_pts:
@@ -778,23 +1087,12 @@ elif page == "🌍  Macro":
             )
             banner_color = "#f97316"
         st.markdown(f"""
-        <div style="
-            background: rgba(245,158,11,0.08);
-            border-left: 4px solid {banner_color};
-            border-radius: 8px;
-            padding: 16px 22px;
-            margin: 16px 0 4px 0;
-        ">
-            <div style="font-size:0.82rem;font-weight:700;text-transform:uppercase;
-                        letter-spacing:1.2px;color:{banner_color};margin-bottom:8px;">
+        <div class="geo-warning" style="background: rgba(245,158,11,0.08); border-left: 4px solid {banner_color};">
+            <div class="geo-warning-title" style="color: {banner_color};">
                 ⚠️ Geopolitical Supply-Shock Signal Detected
             </div>
-            <div style="font-size:0.9rem;line-height:1.65;opacity:0.88;margin-bottom:10px;">
-                {detail}
-            </div>
-            <div style="font-size:0.85rem;line-height:1.6;opacity:0.68;font-style:italic;">
-                {adj_note}
-            </div>
+            <div class="geo-warning-body">{detail}</div>
+            <div class="geo-warning-note">{adj_note}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -814,18 +1112,12 @@ elif page == "🌍  Macro":
     with desc_col:
         phase_color = signals["cycle_color"]
         st.markdown(f"""
-        <div style="
-            background:{phase_color}18;
-            border-left: 4px solid {phase_color};
-            border-radius: 8px;
-            padding: 20px 24px;
-            margin-top: 60px;
-        ">
-            <div style="font-size:1.5rem;font-weight:700;color:{phase_color};margin-bottom:8px;">
+        <div class="cycle-desc-card" style="background:{phase_color}18; border-left: 4px solid {phase_color};">
+            <div class="cycle-desc-phase" style="color:{phase_color};">
                 {signals.get('cycle_icon','')} {signals['cycle_phase']}
             </div>
-            <div style="line-height:1.7;margin-bottom:16px;">{signals['cycle_desc']}</div>
-            <div style="opacity:0.7;font-size:0.9rem;">
+            <div class="cycle-desc-text">{signals['cycle_desc']}</div>
+            <div class="cycle-desc-pos">
                 <b>Equity positioning:</b> {signals.get('cycle_stocks','—')}<br>
                 <b>Bond positioning:</b> {signals.get('cycle_bonds','—')}
             </div>
@@ -875,36 +1167,22 @@ elif page == "🌍  Macro":
         bar_filled = "█" * int(stage_pct / 10)
         bar_empty  = "░" * (10 - int(stage_pct / 10))
         st.markdown(f"""
-        <div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.18);
-             border-radius:10px;padding:20px 24px;">
-            <div style="font-size:0.8rem;opacity:0.55;text-transform:uppercase;
-                        letter-spacing:1.5px;margin-bottom:8px;">Cycle Stage</div>
-            <div style="font-size:2rem;font-weight:800;color:{stage_color};margin-bottom:10px;">
-                {stage}
-            </div>
-            <div style="font-family:monospace;font-size:1.1rem;color:{stage_color};margin-bottom:6px;">
-                {bar_filled}{bar_empty} ~{stage_pct}%
-            </div>
-            <div style="font-size:0.82rem;opacity:0.55;">approximate progress through {signals.get('cycle_phase','—')}</div>
+        <div class="cycle-stage-card">
+            <div class="cycle-stage-label">Cycle Stage</div>
+            <div class="cycle-stage-value" style="color:{stage_color};">{stage}</div>
+            <div class="cycle-stage-bar" style="color:{stage_color};">{bar_filled}{bar_empty} ~{stage_pct}%</div>
+            <div class="cycle-stage-sub">approximate progress through {signals.get('cycle_phase','—')}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with m_right:
         # Next phase + watch signal
         st.markdown(f"""
-        <div style="background:rgba(148,163,184,0.07);border:1px solid rgba(148,163,184,0.18);
-             border-radius:10px;padding:20px 24px;">
-            <div style="font-size:0.8rem;opacity:0.55;text-transform:uppercase;
-                        letter-spacing:1.5px;margin-bottom:8px;">Likely Next Phase</div>
-            <div style="font-size:1.5rem;font-weight:700;margin-bottom:12px;">
-                {next_icon} {next_phase}
-            </div>
-            <div style="font-size:0.88rem;opacity:0.75;margin-bottom:8px;">
-                <b>Transition risk:</b> {t_risk}
-            </div>
-            <div style="font-size:0.88rem;opacity:0.75;">
-                <b>📡 Watch:</b> {watch}
-            </div>
+        <div class="cycle-stage-card">
+            <div class="cycle-stage-label">Likely Next Phase</div>
+            <div class="cycle-next-value">{next_icon} {next_phase}</div>
+            <div class="cycle-stage-detail"><b>Transition risk:</b> {t_risk}</div>
+            <div class="cycle-stage-detail"><b>📡 Watch:</b> {watch}</div>
         </div>
         """, unsafe_allow_html=True)
 

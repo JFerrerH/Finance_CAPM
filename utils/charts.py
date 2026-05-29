@@ -30,13 +30,13 @@ def plot_sml(Rf, Rm, beta, capm_return, ticker):
                     line=dict(color="white", width=2)),
     ))
     fig.update_layout(
-        title=dict(text="Security Market Line (SML)", font=dict(size=16)),
+        title=dict(text="Security Market Line (SML)", font=dict(size=14)),
         xaxis_title="Beta (β)",
         yaxis_title="Expected Return (%)",
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -56,13 +56,13 @@ def plot_monthly_returns(data):
         fill="tozeroy", fillcolor="rgba(245,158,11,0.08)",
     ))
     fig.update_layout(
-        title=dict(text="Monthly Returns — Stock vs. Index", font=dict(size=16)),
+        title=dict(text="Monthly Returns — Stock vs. Index", font=dict(size=14)),
         xaxis_title="Date",
         yaxis_title="Monthly Return",
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -82,13 +82,13 @@ def plot_regression(X, Y, y_pred):
         line=dict(color="#ef4444", width=2),
     ))
     fig.update_layout(
-        title=dict(text="Beta Estimation — OLS Regression", font=dict(size=16)),
+        title=dict(text="Beta Estimation — OLS Regression", font=dict(size=14)),
         xaxis_title="Market Monthly Return",
         yaxis_title="Stock Monthly Return",
         hovermode="closest",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -162,22 +162,22 @@ def plot_rolling_beta(rolling_beta, static_beta):
     ))
     fig.add_hline(
         y=1.0, line_dash="dot", line_color="#94a3b8", line_width=1.5,
-        annotation_text="  Market β = 1", annotation_position="top right",
+        annotation_text="β = 1 (market)", annotation_position="top left",
         annotation_font_color="#94a3b8",
     )
     fig.add_hline(
         y=float(static_beta), line_dash="dash", line_color="#f59e0b", line_width=1.5,
-        annotation_text=f"  Static β = {static_beta:.2f}", annotation_position="bottom right",
+        annotation_text=f"β = {static_beta:.2f} (static)", annotation_position="bottom left",
         annotation_font_color="#f59e0b",
     )
     fig.update_layout(
-        title=dict(text="Rolling 12-Month Beta", font=dict(size=16)),
+        title=dict(text="Rolling 12-Month Beta", font=dict(size=14)),
         xaxis_title="Date",
         yaxis_title="Beta (β)",
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, r=120),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80, r=20),
     )
     return fig
 
@@ -191,13 +191,13 @@ def plot_drawdown(drawdown_series):
         fill="tozeroy", fillcolor="rgba(239,68,68,0.15)",
     ))
     fig.update_layout(
-        title=dict(text="Underwater Chart (Drawdown %)", font=dict(size=16)),
+        title=dict(text="Underwater Chart (Drawdown %)", font=dict(size=14)),
         xaxis_title="Date",
         yaxis_title="Drawdown (%)",
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        margin=dict(t=60),
+        margin=dict(t=50, b=40),
     )
     return fig
 
@@ -229,20 +229,20 @@ def plot_return_distribution(returns):
     ))
     fig.add_vline(x=0,    line_dash="dot",   line_color="#94a3b8", line_width=1.5)
     fig.add_vline(x=mean, line_dash="solid", line_color="#10b981", line_width=1.5,
-                  annotation_text=f"  Mean {mean:.2%}", annotation_position="top right",
+                  annotation_text=f"Mean {mean:.2%}", annotation_position="top left",
                   annotation_font_color="#10b981")
     fig.update_layout(
         title=dict(
-            text=f"Return Distribution  |  Skew: {skew:.2f}  |  Excess Kurtosis: {kurt:.2f}",
-            font=dict(size=15),
+            text=f"Return Distribution  |  Skew: {skew:.2f}  |  Kurt: {kurt:.2f}",
+            font=dict(size=13),
         ),
         xaxis_title="Monthly Return",
         yaxis_title="Density",
         hovermode="x unified",
         barmode="overlay",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -284,14 +284,14 @@ def plot_var_distribution(returns, var_results):
                   annotation_text=f"CVaR 95%: {cvar_95:.2%}", annotation_position="top right",
                   annotation_font_color="#f97316")
     fig.update_layout(
-        title=dict(text="Monthly Return Distribution with VaR Thresholds", font=dict(size=16)),
+        title=dict(text="Return Distribution with VaR Thresholds", font=dict(size=14)),
         xaxis_title="Monthly Return",
         yaxis_title="Density",
         hovermode="x unified",
         barmode="overlay",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -343,18 +343,18 @@ def plot_monte_carlo(pct_paths, future_dates, current_price, ticker):
     # Current price reference line
     fig.add_hline(
         y=current_price, line_dash="dash", line_color="#94a3b8", line_width=1.5,
-        annotation_text=f"  Current ${current_price:.2f}",
-        annotation_position="top right",
+        annotation_text=f"Current ${current_price:.2f}",
+        annotation_position="top left",
         annotation_font_color="#94a3b8",
     )
     fig.update_layout(
-        title=dict(text=f"Monte Carlo Price Simulation — {ticker.upper()}", font=dict(size=16)),
+        title=dict(text=f"Monte Carlo — {ticker.upper()}", font=dict(size=14)),
         xaxis_title="Date",
         yaxis_title="Price (USD)",
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, r=120),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80, r=20),
     )
     return fig
 
@@ -387,12 +387,12 @@ def plot_terminal_distribution(final_prices, current_price):
                   annotation_text=f"  90th pct ${p90:.2f}",
                   annotation_position="top right", annotation_font_color="#10b981")
     fig.update_layout(
-        title=dict(text="Terminal Price Distribution (Monte Carlo)", font=dict(size=16)),
+        title=dict(text="Terminal Price Distribution (Monte Carlo)", font=dict(size=14)),
         xaxis_title="Price (USD)",
         yaxis_title="Count",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        margin=dict(t=60),
+        margin=dict(t=50, b=40),
     )
     return fig
 
@@ -523,13 +523,13 @@ def plot_efficient_frontier(frontier_df, max_sharpe, min_vol, Rf, asset_stats=No
     ))
 
     fig.update_layout(
-        title=dict(text="Efficient Frontier (Monte Carlo — 5 000 portfolios)", font=dict(size=16)),
+        title=dict(text="Efficient Frontier (Monte Carlo — 5 000 portfolios)", font=dict(size=13)),
         xaxis_title="Annualised Volatility (%)",
         yaxis_title="Annualised Return (%)",
         hovermode="closest",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, r=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=110, r=70),
     )
     return fig
 
@@ -556,13 +556,13 @@ def plot_portfolio_weights(tickers, ms_weights, mv_weights):
     ))
     fig.update_layout(
         barmode="group",
-        title=dict(text="Optimal Portfolio Weights", font=dict(size=16)),
+        title=dict(text="Optimal Portfolio Weights", font=dict(size=14)),
         xaxis_title="Asset",
         yaxis_title="Weight (%)",
         yaxis=dict(range=[0, max(pct_ms.max(), pct_mv.max()) * 1.25]),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=80),
     )
     return fig
 
@@ -582,11 +582,11 @@ def plot_weights_pie(tickers, weights, title="Selected Portfolio"):
         marker=dict(line=dict(color="rgba(255,255,255,0.15)", width=2)),
     ))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=15)),
+        title=dict(text=title, font=dict(size=14)),
         paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=50, b=20, l=20, r=20),
+        margin=dict(t=50, b=70, l=20, r=20),
         showlegend=True,
-        legend=dict(orientation="v", x=1.02, y=0.5),
+        legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5),
         height=300,
     )
     return fig
@@ -640,14 +640,14 @@ def plot_revenue_earnings_trend(income_data: dict) -> go.Figure:
     ))
     fig.update_layout(
         barmode="group",
-        title=dict(text="Revenue & Net Income", font=dict(size=16)),
+        title=dict(text="Revenue & Net Income", font=dict(size=14)),
         xaxis_title="Year",
         yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
         yaxis2=dict(title="Net Margin (%)", overlaying="y", side="right",
                     ticksuffix="%", showgrid=False),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, b=40),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=90),
     )
     return fig
 
@@ -779,12 +779,12 @@ def plot_cashflow_bars(cf_data: dict) -> go.Figure:
 
     fig.update_layout(
         barmode="group",
-        title=dict(text="Cash Flow Statement", font=dict(size=16)),
+        title=dict(text="Cash Flow Statement", font=dict(size=14)),
         xaxis_title="Year",
         yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, b=40),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=90),
     )
     return fig
 
@@ -824,14 +824,14 @@ def plot_capital_structure(bal_data: dict) -> go.Figure:
     ))
     fig.update_layout(
         barmode="stack",
-        title=dict(text="Capital Structure", font=dict(size=16)),
+        title=dict(text="Capital Structure", font=dict(size=14)),
         xaxis_title="Year",
         yaxis=dict(title="USD Billions", tickprefix="$", ticksuffix="B"),
         yaxis2=dict(title="D/E Ratio", overlaying="y", side="right",
                     ticksuffix="x", showgrid=False),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=60, b=40),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+        margin=dict(t=50, b=90),
     )
     return fig
 
@@ -886,7 +886,7 @@ def plot_dalio_quadrant(growth_score: float, inflation_score: float,
     ))
 
     fig.update_layout(
-        title=dict(text="Economic Cycle Positioning — Dalio Framework", font=dict(size=16)),
+        title=dict(text="Economic Cycle Positioning — Dalio Framework", font=dict(size=13)),
         xaxis=dict(
             title="← Contracting  |  Growth  |  Expanding →",
             range=[-1.15, 1.15], zeroline=False, showgrid=False,
@@ -900,7 +900,7 @@ def plot_dalio_quadrant(growth_score: float, inflation_score: float,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         height=400,
-        margin=dict(t=60, b=50, l=60, r=20),
+        margin=dict(t=50, b=50, l=60, r=20),
     )
     return fig
 
@@ -929,13 +929,13 @@ def plot_macro_history(macro_data: dict, names: list[str]) -> go.Figure:
         ))
 
     fig.update_layout(
-        title=dict(text="Macro Indicators — Normalised (base=100)", font=dict(size=16)),
+        title=dict(text="Macro Indicators — Normalised (base=100)", font=dict(size=14)),
         xaxis_title="Date",
         yaxis_title="Index (base = 100 at start)",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
         hovermode="x unified",
-        margin=dict(t=60, b=40),
+        margin=dict(t=50, b=90),
     )
     return fig
 
@@ -990,11 +990,15 @@ def plot_short_cycle_path(path_df, current_growth: float, current_inflation: flo
                       x0=x0, x1=x1, y0=0, y1=1,
                       fillcolor=PHASE_COLORS[ph], line_width=0, layer="below")
         if ph not in labeled and (e_i - s_i) >= 3:
-            mid = pf_dates[(s_i + e_i) // 2].strftime("%Y-%m-%d")
+            mid_dt     = pf_dates[(s_i + e_i) // 2]
+            mid        = mid_dt.strftime("%Y-%m-%d")
+            total_days = max((pf_dates[-1] - pf_dates[0]).days, 1)
+            x_frac     = (mid_dt - pf_dates[0]).days / total_days
+            x_anchor   = "right" if x_frac > 0.6 else "left"
             fig.add_annotation(xref="x", yref="paper",
                                x=mid, y=0.97,
                                text=f"<b>{ph}</b>",
-                               showarrow=False, xanchor="center",
+                               showarrow=False, xanchor=x_anchor,
                                font=dict(size=9, color="rgba(220,220,220,0.50)"))
             labeled.add(ph)
 
@@ -1086,30 +1090,34 @@ def plot_short_cycle_path(path_df, current_growth: float, current_inflation: flo
                     "%{x|%b %Y}: %{y:.1f}<extra></extra>"
                 ),
             ))
-            fig.add_annotation(xref="x", yref="paper",
-                               x=now_str, y=0.86,
-                               text=f"  NOW<br><b>{cycle_phase}</b>",
-                               showarrow=False, xanchor="left",
+            fig.add_annotation(xref="paper", yref="paper",
+                               x=0.99, y=0.82,
+                               text=f"NOW<br><b>{cycle_phase}</b>",
+                               showarrow=False, xanchor="right",
                                font=dict(color=cycle_color, size=10),
-                               bgcolor="rgba(15,15,20,0.65)", borderpad=4)
+                               bgcolor="rgba(15,15,20,0.65)", borderpad=3)
 
             fig.update_layout(
                 title=dict(
-                    text="Short Cycle — S&P 500 Oscillating Around Productivity Trend (Dalio)",
-                    font=dict(size=15),
+                    text="Short Cycle — Growth & Inflation Trajectory (Dalio)",
+                    font=dict(size=13),
                 ),
-                xaxis=dict(showgrid=False, showline=False),
+                xaxis=dict(
+                    showgrid=False, showline=False,
+                    range=[dates_sp[0].strftime("%Y-%m-%d"),
+                           dates_sp[-1].strftime("%Y-%m-%d")],
+                ),
                 yaxis=dict(
                     title="Index (= 100 at window start)",
                     showgrid=True, gridcolor="rgba(150,150,150,0.07)",
                     zeroline=False,
                 ),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                            xanchor="left", x=0, font=dict(size=11)),
+                legend=dict(orientation="h", yanchor="top", y=-0.12,
+                            xanchor="center", x=0.5, font=dict(size=10)),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 hovermode="x unified",
                 height=430,
-                margin=dict(t=60, b=40, l=80, r=30),
+                margin=dict(t=50, b=90, l=60, r=20),
             )
             return fig
 
@@ -1140,19 +1148,22 @@ def plot_short_cycle_path(path_df, current_growth: float, current_inflation: flo
     fig.add_shape(type="line", xref="x", yref="paper",
                   x0=now_str, x1=now_str, y0=0, y1=1,
                   line=dict(color=cycle_color, width=2))
-    fig.add_annotation(xref="x", yref="paper",
-                       x=now_str, y=0.88,
+    fig.add_annotation(xref="paper", yref="paper",
+                       x=0.99, y=0.82,
                        text=(f"NOW<br><b>{cycle_phase}</b><br>"
                              f"<span style='font-size:9px'>"
                              f"G {current_growth:+.2f} / I {current_inflation:+.2f}</span>"),
-                       showarrow=False, xanchor="left",
+                       showarrow=False, xanchor="right",
                        font=dict(color=cycle_color, size=10),
-                       bgcolor="rgba(15,15,20,0.6)", borderpad=4)
+                       bgcolor="rgba(15,15,20,0.6)", borderpad=3)
 
     fig.update_layout(
-        title=dict(text="Short Cycle — Growth & Inflation Over Time (Dalio Framework)",
-                   font=dict(size=15)),
-        xaxis=dict(showgrid=False, showline=False),
+        title=dict(text="Short Cycle — Growth & Inflation Over Time (Dalio)",
+                   font=dict(size=13)),
+        xaxis=dict(
+            showgrid=False, showline=False,
+            range=[dates[0].strftime("%Y-%m-%d"), dates[-1].strftime("%Y-%m-%d")],
+        ),
         yaxis=dict(
             title="Signal strength",
             range=[-1.15, 1.15],
@@ -1162,12 +1173,12 @@ def plot_short_cycle_path(path_df, current_growth: float, current_inflation: flo
             ticktext=["-1  Contraction/Deflation", "-0.5", "0", "+0.5",
                       "+1  Expansion/Inflation"],
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
-                    font=dict(size=11)),
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                    font=dict(size=10)),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         hovermode="x unified",
         height=430,
-        margin=dict(t=60, b=40, l=80, r=30),
+        margin=dict(t=50, b=90, l=60, r=20),
     )
     return fig
 
@@ -1192,6 +1203,12 @@ def plot_big_cycle_history(history: dict, bc_phase: str, bc_color: str,
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
         return fig
+
+    # Clip to today — FRED/CBO data includes projections up to 2050+
+    today = pd.Timestamp.today()
+    debt_gdp = debt_gdp[debt_gdp.index <= today]
+    if fedfunds is not None and not fedfunds.empty:
+        fedfunds = fedfunds[fedfunds.index <= today]
 
     fig = go.Figure()
 
@@ -1226,15 +1243,17 @@ def plot_big_cycle_history(history: dict, bc_phase: str, bc_color: str,
         ))
 
     # ── Key historical event annotations ─────────────────────────────────────
+    # y values alternate between 0.97 and 0.86 so adjacent labels don't collide
+    # on narrow (mobile) screens where the chart is only ~280px wide.
     events = [
-        ("1971-08-15", "Nixon<br>gold window"),
-        ("1981-06-01", "Volcker<br>peak rates"),
-        ("2008-09-15", "GFC"),
-        ("2020-03-01", "COVID"),
+        ("1971-08-15", "Nixon '71",   0.97),
+        ("1981-06-01", "Volcker '81", 0.88),
+        ("2008-09-15", "GFC '08",     0.97),
+        ("2020-03-01", "COVID '20",   0.88),
     ]
     # add_shape + add_annotation avoids add_vline's internal Timestamp arithmetic
     # which is incompatible with pandas 2.0 on datetime axes.
-    for date_str, label in events:
+    for date_str, label, y_pos in events:
         try:
             dt = pd.to_datetime(date_str)
             if debt_gdp.index.min() <= dt <= debt_gdp.index.max():
@@ -1243,9 +1262,9 @@ def plot_big_cycle_history(history: dict, bc_phase: str, bc_color: str,
                               x0=x_str, x1=x_str, y0=0, y1=1,
                               line=dict(color="rgba(148,163,184,0.30)", dash="dot", width=1))
                 fig.add_annotation(xref="x", yref="paper",
-                                   x=x_str, y=0.97,
+                                   x=x_str, y=y_pos,
                                    text=f"  {label}", showarrow=False,
-                                   font=dict(size=9, color="rgba(148,163,184,0.65)"),
+                                   font=dict(size=8, color="rgba(148,163,184,0.65)"),
                                    xanchor="left")
         except Exception:
             pass
@@ -1255,26 +1274,35 @@ def plot_big_cycle_history(history: dict, bc_phase: str, bc_color: str,
     fig.add_shape(type="line", xref="x", yref="paper",
                   x0=now_str, x1=now_str, y0=0, y1=1,
                   line=dict(color=bc_color, dash="solid", width=2))
-    fig.add_annotation(xref="x", yref="paper",
-                       x=now_str, y=0.88,
-                       text=f"  {bc_icon} NOW — {bc_phase}",
+    fig.add_annotation(xref="paper", yref="paper",
+                       x=0.99, y=0.72,
+                       text=f"{bc_icon} NOW<br><b>{bc_phase}</b>",
                        showarrow=False,
-                       font=dict(color=bc_color, size=11),
-                       xanchor="left")
+                       font=dict(color=bc_color, size=10),
+                       xanchor="right",
+                       bgcolor="rgba(10,10,15,0.6)", borderpad=3)
 
     fig.update_layout(
-        title=dict(text="Big Cycle — Federal Debt / GDP Since 1966 (Dalio Long-term Debt Cycle)",
-                   font=dict(size=15)),
-        xaxis=dict(title="", showgrid=False),
-        yaxis=dict(title="Federal Debt / GDP (%)", ticksuffix="%",
+        title=dict(
+            text="Federal Debt / GDP Since 1966 — Dalio Big Cycle",
+            font=dict(size=13),
+            x=0,
+            xref="paper",
+        ),
+        xaxis=dict(
+            title="", showgrid=False,
+            range=[debt_gdp.index.min().strftime("%Y-%m-%d"),
+                   debt_gdp.index.max().strftime("%Y-%m-%d")],
+        ),
+        yaxis=dict(title="Debt / GDP (%)", ticksuffix="%",
                    showgrid=True, gridcolor="rgba(150,150,150,0.1)"),
-        yaxis2=dict(title="Fed Funds Rate (%)", overlaying="y", side="right",
+        yaxis2=dict(title="Fed Funds (%)", overlaying="y", side="right",
                     ticksuffix="%", showgrid=False, range=[0, 25]),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
         hovermode="x unified",
         height=420,
-        margin=dict(t=65, b=40, l=60, r=70),
+        margin=dict(t=50, b=80, l=50, r=55),
     )
     return fig
 
