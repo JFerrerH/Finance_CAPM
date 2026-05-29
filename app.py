@@ -344,7 +344,7 @@ div[data-testid="metric-container"] {
 /* ── Mobile (≤ 768px) ────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2.5rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         padding-bottom: 1.5rem !important;
