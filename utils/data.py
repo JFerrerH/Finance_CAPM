@@ -21,10 +21,10 @@ def clean_column_names(df):
     return df
 
 
-def download_ticker_data(ticker, start_date, end_date, interval):
+def download_ticker_data(ticker, start_date, end_date, interval, silent=False):
     data = yf.download(ticker, start=start_date, end=end_date, interval=interval)
     data = clean_column_names(data)
     data.index = pd.to_datetime(data.index)
-    if data.empty:
+    if data.empty and not silent:
         st.error(f"No data found for ticker: {ticker}")
     return data

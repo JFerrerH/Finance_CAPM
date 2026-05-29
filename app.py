@@ -22,6 +22,13 @@ from utils.valuation import (
     calculate_dcf,
     calculate_lynch_fair_value,
 )
+from utils.macro import get_macro_data, compute_cycle_signals, macro_implication
+from utils.scoring import (
+    score_alpha, score_risk_return, score_momentum,
+    score_financial_health, score_valuation, score_macro_fit,
+    get_verdict, build_bull_bear,
+    SCORE_COLORS, SCORE_LABELS,
+)
 from utils.charts import (
     plot_sml,
     plot_monthly_returns,
@@ -41,6 +48,9 @@ from utils.charts import (
     plot_sankey,
     plot_cashflow_bars,
     plot_capital_structure,
+    plot_dalio_quadrant,
+    plot_macro_history,
+    plot_score_breakdown,
 )
 
 
@@ -198,8 +208,9 @@ with st.sidebar:
     st.markdown('<p class="input-label">Navigate</p>', unsafe_allow_html=True)
     page = st.radio(
         "page",
-        ["📊  Dashboard", "📉  Analysis", "📐  Performance", "🎲  Risk",
-         "📦  Portfolio", "🏦  Fundamentals", "🏥  Financial Health", "💰  Valuation", "🗃  Raw Data"],
+        ["📊  Dashboard", "📍  Thesis", "📉  Analysis", "📐  Performance", "🎲  Risk",
+         "🌍  Macro", "📦  Portfolio", "🏦  Fundamentals", "🏥  Financial Health",
+         "💰  Valuation", "🗃  Raw Data"],
         label_visibility="collapsed",
     )
 
@@ -279,6 +290,164 @@ if page == "📊  Dashboard":
 
     section_divider("Security Market Line")
     st.plotly_chart(plot_sml(Rf, Rm, beta, CAPM, ticker_accion), use_container_width=True, theme="streamlit")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Investment Thesis
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "📍  Thesis":
+    page_header("Investment Thesis", ticker_accion)
+
+    # ── Load additional data needed for scoring ───────────────────────────────
+    info    = get_stock_info(ticker_accion)
+    stmts   = get_financial_statements(ticker_accion)
+    inc     = extract_income_data(stmts.get("income"))
+    cf      = extract_cashflow_data(stmts.get("cashflow"))
+    bal     = extract_balance_data(stmts.get("balance"))
+
+    # Valuation inputs (mirror the Valuation page approach, all cached)
+    current_price    = info.get("currentPrice")    if info else None
+    eps              = info.get("trailingEps")     if info else None
+    fcf_raw          = (info.get("freeCashflow") or 0) if info else 0
+    shares_out       = (info.get("sharesOutstanding") or 1) if info else 1
+    required_return  = CAPM / 100 if CAPM else 0.10
+
+    api_key   = st.secrets.get("fmp", {}).get("api_key", "")
+    sector_pe = get_sector_pe(ticker_accion, api_key) or 25
+    if sector_pe <= 0:
+        sector_pe = 25
+
+    pe_fair   = calculate_pe_fair_value(eps, sector_pe)
+    dcf_tuple = calculate_dcf(fcf_raw, shares_out, required_return)
+    dcf_price = dcf_tuple[0] if dcf_tuple else None
+    estimates = [p for p in [dcf_price, pe_fair] if p and p > 0]
+    valuation_upside = (
+        (sum(estimates) / len(estimates) - current_price) / current_price
+        if estimates and current_price else None
+    )
+
+    # Macro cycle for context
+    today_str  = datetime.date.today().isoformat()
+    start_macro = (datetime.date.today() - datetime.timedelta(days=730)).isoformat()
+    macro_data = get_macro_data(start_macro, today_str)
+    signals    = compute_cycle_signals(macro_data)
+    cycle_phase = signals.get("cycle_phase", "Transition")
+
+    # ── Compute scores ────────────────────────────────────────────────────────
+    s_alpha   = score_alpha(capm)
+    s_risk    = score_risk_return(perf)
+    s_mom     = score_momentum(perf, capm)
+    s_fin     = score_financial_health(inc, cf, bal)
+    s_val     = score_valuation(current_price, dcf_price, pe_fair)
+    s_macro   = score_macro_fit(signals, beta)
+
+    score_dict = {
+        "Alpha Quality":    s_alpha[0],
+        "Risk / Return":    s_risk[0],
+        "Momentum":         s_mom[0],
+        "Financial Health": s_fin[0],
+        "Valuation":        s_val[0],
+        "Macro Fit":        s_macro[0],
+    }
+    verdict, verdict_color = get_verdict(score_dict)
+
+    valid_scores = [v for v in score_dict.values() if v is not None]
+    avg_score    = sum(valid_scores) / len(valid_scores) if valid_scores else 0
+
+    # Bull / bear case
+    bull_pts, bear_pts = build_bull_bear(
+        capm, perf, var_results or {},
+        inc, cf, bal,
+        valuation_upside, cycle_phase, beta,
+    )
+
+    # ── Verdict banner ────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="
+        background: {verdict_color}22;
+        border: 2px solid {verdict_color};
+        border-radius: 12px;
+        padding: 28px 36px;
+        text-align: center;
+        margin-bottom: 24px;
+    ">
+        <div style="font-size: 0.9rem; opacity: 0.7; text-transform: uppercase;
+                    letter-spacing: 2px; margin-bottom: 6px;">Investment Verdict</div>
+        <div style="font-size: 2.8rem; font-weight: 800; color: {verdict_color};
+                    letter-spacing: 1px;">{verdict}</div>
+        <div style="font-size: 1rem; margin-top: 10px; opacity: 0.65;">
+            Composite score: <b>{avg_score:.1f} / 5</b> &nbsp;·&nbsp; Macro: {signals.get('cycle_icon','')} {cycle_phase}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Score breakdown chart ─────────────────────────────────────────────────
+    section_divider("Score Breakdown")
+    st.plotly_chart(
+        plot_score_breakdown(
+            list(score_dict.keys()),
+            list(score_dict.values()),
+            [s_alpha[1], s_risk[1], s_mom[1], s_fin[1], s_val[1], s_macro[1]],
+        ),
+        use_container_width=True,
+        theme="streamlit",
+    )
+
+    # ── Bull / Bear case ──────────────────────────────────────────────────────
+    section_divider("Bull Case vs Bear Case")
+    col_bull, col_bear = st.columns(2)
+
+    with col_bull:
+        st.markdown("""
+        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);
+             border-radius:8px;padding:16px 20px;">
+        <div style="color:#10b981;font-weight:700;font-size:1.05rem;margin-bottom:12px;">
+        ✅ Bull Case</div>
+        """, unsafe_allow_html=True)
+        if bull_pts:
+            for pt in bull_pts:
+                st.markdown(f"- {pt}")
+        else:
+            st.markdown("- No strong positive signals detected")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_bear:
+        st.markdown("""
+        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);
+             border-radius:8px;padding:16px 20px;">
+        <div style="color:#ef4444;font-weight:700;font-size:1.05rem;margin-bottom:12px;">
+        ❌ Bear Case</div>
+        """, unsafe_allow_html=True)
+        if bear_pts:
+            for pt in bear_pts:
+                st.markdown(f"- {pt}")
+        else:
+            st.markdown("- No major risks identified")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Key metrics summary table ─────────────────────────────────────────────
+    section_divider("Key Metrics at a Glance")
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    with kpi_col1:
+        st.metric("Annual Return",   f"{perf['ann_return']:.2%}")
+        st.metric("Sharpe Ratio",    f"{perf['sharpe']:.2f}")
+        st.metric("Beta",            f"{beta:.2f}")
+    with kpi_col2:
+        st.metric("Max Drawdown",    f"{perf['max_drawdown']:.2%}")
+        st.metric("Jensen Alpha",    f"{capm.get('jensen_alpha_annual',0):.2%}/yr")
+        st.metric("Macro Cycle",     f"{signals.get('cycle_icon','')} {cycle_phase}")
+    with kpi_col3:
+        st.metric("Current Price",   f"${current_price:,.2f}" if current_price else "—")
+        if estimates:
+            st.metric("Blended Fair Value", f"${sum(estimates)/len(estimates):,.2f}")
+        if valuation_upside is not None:
+            delta_str = f"{valuation_upside:+.1%} vs current"
+            st.metric("Upside / Downside", delta_str)
+
+    st.markdown(
+        "<div style='opacity:0.45;font-size:0.78rem;margin-top:12px;'>"
+        "This verdict is model-based and purely informational. Not financial advice.</div>",
+        unsafe_allow_html=True,
+    )
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAGE: Analysis
@@ -445,6 +614,143 @@ elif page == "🎲  Risk":
         plot_terminal_distribution(final_prices, current_price_mc),
         use_container_width=True, theme="streamlit",
     )
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE: Macro
+# ════════════════════════════════════════════════════════════════════════════════
+elif page == "🌍  Macro":
+    page_header("Macro Environment", "Ray Dalio Framework")
+
+    today_str   = datetime.date.today().isoformat()
+    start_macro = (datetime.date.today() - datetime.timedelta(days=1095)).isoformat()  # 3 years
+
+    with st.spinner("Loading macro data…"):
+        macro_data = get_macro_data(start_macro, today_str)
+
+    if not macro_data:
+        st.warning("Could not load macro data. Please try again later.")
+        st.stop()
+
+    signals = compute_cycle_signals(macro_data)
+
+    # ── KPI strip ─────────────────────────────────────────────────────────────
+    section_divider("Current Market Conditions")
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+
+    rate = signals.get("rate_current")
+    k1.metric("10Y Yield",
+              f"{rate:.2f}%" if rate else "—",
+              signals.get("rate_direction", "—"))
+
+    vix = signals.get("vix_current")
+    k2.metric("VIX",
+              f"{vix:.1f}" if vix else "—",
+              signals.get("vix_label", "—"))
+
+    sp6 = signals.get("sp_6m")
+    k3.metric("S&P 500 (6M)",
+              f"{sp6:+.1f}%" if sp6 is not None else "—",
+              signals.get("growth_signal", "—"))
+
+    gold6 = signals.get("gold_6m")
+    k4.metric("Gold (6M)",
+              f"{gold6:+.1f}%" if gold6 is not None else "—",
+              signals.get("inflation_signal", "—"))
+
+    dxy = signals.get("dxy_3m")
+    k5.metric("Dollar (3M)",
+              f"{dxy:+.1f}%" if dxy is not None else "—",
+              signals.get("dxy_direction", "—"))
+
+    oil3 = signals.get("oil_3m")
+    k6.metric("Oil (3M)",
+              f"{oil3:+.1f}%" if oil3 is not None else "—")
+
+    # ── Dalio quadrant + cycle description ────────────────────────────────────
+    section_divider("Economic Cycle Positioning")
+    q_col, desc_col = st.columns([1, 1], gap="large")
+
+    with q_col:
+        gs  = signals.get("growth_score", 0.0)
+        ins = signals.get("inflation_score", 0.0)
+        st.plotly_chart(
+            plot_dalio_quadrant(gs, ins, signals["cycle_phase"], signals["cycle_color"]),
+            use_container_width=True, theme="streamlit",
+        )
+
+    with desc_col:
+        phase_color = signals["cycle_color"]
+        st.markdown(f"""
+        <div style="
+            background:{phase_color}18;
+            border-left: 4px solid {phase_color};
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin-top: 60px;
+        ">
+            <div style="font-size:1.5rem;font-weight:700;color:{phase_color};margin-bottom:8px;">
+                {signals.get('cycle_icon','')} {signals['cycle_phase']}
+            </div>
+            <div style="line-height:1.7;margin-bottom:16px;">{signals['cycle_desc']}</div>
+            <div style="opacity:0.7;font-size:0.9rem;">
+                <b>Equity positioning:</b> {signals.get('cycle_stocks','—')}<br>
+                <b>Bond positioning:</b> {signals.get('cycle_bonds','—')}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Normalised trend chart ────────────────────────────────────────────────
+    section_divider("Macro Trend History (3 Years)")
+    available = [n for n in ["S&P 500", "Gold", "10Y Yield", "Oil", "Dollar"] if n in macro_data]
+    if available:
+        selected = st.multiselect(
+            "Select indicators to compare",
+            options=available,
+            default=available[:3],
+            key="macro_trend_select",
+        )
+        if selected:
+            st.plotly_chart(
+                plot_macro_history(macro_data, selected),
+                use_container_width=True, theme="streamlit",
+            )
+
+    # ── Stock implication ─────────────────────────────────────────────────────
+    section_divider(f"What This Means for {ticker_accion}")
+    implication = macro_implication(signals["cycle_phase"], beta, ticker_accion)
+    st.markdown(f"""
+    <div style="
+        background: rgba(148,163,184,0.07);
+        border: 1px solid rgba(148,163,184,0.2);
+        border-radius: 8px;
+        padding: 20px 24px;
+        line-height: 1.8;
+        font-size: 1.02rem;
+    ">{implication}</div>
+    """, unsafe_allow_html=True)
+
+    # ── Ray Dalio reference ───────────────────────────────────────────────────
+    with st.expander("About the Ray Dalio Framework"):
+        st.markdown("""
+        **Ray Dalio's Economic Machine** identifies two key debt cycles that drive asset prices:
+
+        - **Short-term debt cycle** (~5-8 years): driven by credit expansion/contraction. Central banks
+          control this via interest rate policy.
+        - **Long-term debt cycle** (~75-100 years): driven by the cumulative build-up of debt.
+          Ends in deleveraging (deflationary or inflationary).
+
+        The **four macro environments** each favour different asset classes:
+
+        | Environment | Growth | Inflation | Favoured Assets |
+        |---|---|---|---|
+        | 🌤 Goldilocks | Rising | Falling/Low | Stocks, High-beta equities |
+        | 🔥 Inflationary Boom | Rising | Rising | Commodities, Energy, Banks |
+        | ⚠️ Stagflation | Falling | Rising | Gold, Commodities, Short-duration |
+        | ❄️ Deflationary Bust | Falling | Falling | Long bonds, Gold, Defensive equities |
+
+        *Note: This page uses market-observable proxies (equity returns, gold, rates, VIX) to estimate
+        the current regime. It is not a real-time macro model and should be one input among many.*
+        """)
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PAGE: Portfolio Optimization

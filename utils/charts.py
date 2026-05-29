@@ -833,3 +833,169 @@ def plot_capital_structure(bal_data: dict) -> go.Figure:
         margin=dict(t=60, b=40),
     )
     return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Macro / Dalio framework charts
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_dalio_quadrant(growth_score: float, inflation_score: float,
+                        phase: str, phase_color: str) -> go.Figure:
+    """
+    2×2 scatter quadrant (x=growth, y=inflation).
+    Background zones coloured per Dalio's four environments.
+    A star marks the current estimated position.
+    """
+    fig = go.Figure()
+
+    # Background rectangles for each quadrant
+    zones = [
+        # x0, y0, x1, y1, fill,                          label
+        (-1.1, 0,    0,    1.1, "rgba(99,102,241,0.12)",  "DEFLATIONARY BUST"),
+        (0,    0,    1.1,  1.1, "rgba(245,158,11,0.12)",  "INFLATIONARY BOOM"),
+        (-1.1, -1.1, 0,    0,   "rgba(16,185,129,0.12)",  "GOLDILOCKS"),
+        (0,   -1.1,  1.1,  0,   "rgba(239,68,68,0.12)",   "STAGFLATION"),
+    ]
+    for x0, y0, x1, y1, fill, label in zones:
+        fig.add_shape(type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
+                      fillcolor=fill, line_width=0, layer="below")
+        fig.add_annotation(
+            x=(x0 + x1) / 2, y=(y0 + y1) / 2,
+            text=f"<b>{label}</b>",
+            showarrow=False,
+            font=dict(size=10, color="rgba(200,200,200,0.55)"),
+        )
+
+    # Axis dividers
+    fig.add_hline(y=0, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
+    fig.add_vline(x=0, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
+
+    # Current position
+    fig.add_trace(go.Scatter(
+        x=[growth_score], y=[inflation_score],
+        mode="markers",
+        marker=dict(symbol="star", size=26, color=phase_color,
+                    line=dict(color="white", width=2)),
+        name=phase,
+        hovertemplate=(
+            f"<b>{phase}</b><br>"
+            f"Growth signal: {growth_score:+.2f}<br>"
+            f"Inflation signal: {inflation_score:+.2f}<extra></extra>"
+        ),
+    ))
+
+    fig.update_layout(
+        title=dict(text="Economic Cycle Positioning — Dalio Framework", font=dict(size=16)),
+        xaxis=dict(
+            title="← Contracting  |  Growth  |  Expanding →",
+            range=[-1.15, 1.15], zeroline=False, showgrid=False,
+            tickvals=[-1, -0.5, 0, 0.5, 1],
+        ),
+        yaxis=dict(
+            title="← Deflationary  |  Inflation  |  Elevated →",
+            range=[-1.15, 1.15], zeroline=False, showgrid=False,
+            tickvals=[-1, -0.5, 0, 0.5, 1],
+        ),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        height=400,
+        margin=dict(t=60, b=50, l=60, r=20),
+    )
+    return fig
+
+
+def plot_macro_history(macro_data: dict, names: list[str]) -> go.Figure:
+    """
+    Normalised index chart (base = 100 at start) for selected macro series.
+    Lets the user compare trends across indicators.
+    """
+    COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4"]
+    fig = go.Figure()
+
+    for i, name in enumerate(names):
+        s = macro_data.get(name)
+        if s is None or s.empty:
+            continue
+        base = float(s.iloc[0])
+        if base == 0:
+            continue
+        normalised = s / base * 100
+        fig.add_trace(go.Scatter(
+            x=normalised.index, y=normalised.values,
+            mode="lines", name=name,
+            line=dict(color=COLORS[i % len(COLORS)], width=2),
+            hovertemplate=f"<b>{name}</b><br>%{{x|%b %Y}}: %{{y:.1f}}<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=dict(text="Macro Indicators — Normalised (base=100)", font=dict(size=16)),
+        xaxis_title="Date",
+        yaxis_title="Index (base = 100 at start)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+        margin=dict(t=60, b=40),
+    )
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investment Thesis / Scorecard chart
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_score_breakdown(
+    dimension_names: list[str],
+    scores: list[int | None],
+    details: list[str],
+) -> go.Figure:
+    """
+    Horizontal bar chart showing the score (1–5) per dimension,
+    colour-coded from red (1) to green (5).
+    None scores are shown as grey "N/A".
+    """
+    from utils.scoring import SCORE_COLORS, SCORE_LABELS
+
+    y      = []
+    x      = []
+    colors = []
+    texts  = []
+
+    for name, sc, det in zip(dimension_names, scores, details):
+        y.append(name)
+        if sc is None:
+            x.append(0)
+            colors.append("#4b5563")
+            texts.append("  N/A — insufficient data")
+        else:
+            x.append(sc)
+            colors.append(SCORE_COLORS.get(sc, "#94a3b8"))
+            texts.append(f"  {SCORE_LABELS.get(sc, '')} — {det}")
+
+    fig = go.Figure(go.Bar(
+        y=y, x=x,
+        orientation="h",
+        marker=dict(color=colors, line=dict(color="rgba(255,255,255,0.08)", width=1)),
+        text=texts,
+        textposition="inside",
+        insidetextanchor="start",
+        hovertemplate="%{y}: %{x}/5<extra></extra>",
+        width=0.55,
+    ))
+
+    # Reference line at 3 (neutral)
+    fig.add_vline(x=3, line_dash="dot", line_color="rgba(150,150,150,0.4)", line_width=1)
+
+    fig.update_layout(
+        xaxis=dict(
+            range=[0, 5.4],
+            tickvals=[1, 2, 3, 4, 5],
+            ticktext=["1 Poor", "2 Weak", "3 Neutral", "4 Good", "5 Excellent"],
+            showgrid=True, gridcolor="rgba(150,150,150,0.15)",
+        ),
+        yaxis=dict(autorange="reversed"),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        height=280,
+        margin=dict(t=20, b=20, l=140, r=20),
+        showlegend=False,
+    )
+    return fig
