@@ -394,3 +394,198 @@ def plot_terminal_distribution(final_prices, current_price):
         margin=dict(t=60),
     )
     return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Markowitz / Portfolio charts
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_correlation_heatmap(returns_df):
+    """Diverging heatmap of the pairwise correlation matrix."""
+    corr   = returns_df.corr().round(4)
+    labels = corr.columns.tolist()
+    n      = len(labels)
+
+    fig = go.Figure(go.Heatmap(
+        z=corr.values,
+        x=labels, y=labels,
+        colorscale="RdBu_r",
+        zmin=-1, zmax=1,
+        text=[[f"{v:.2f}" for v in row] for row in corr.values],
+        texttemplate="%{text}",
+        textfont=dict(size=13),
+        hovertemplate="<b>%{x}</b> vs <b>%{y}</b><br>Correlation: %{z:.4f}<extra></extra>",
+        colorbar=dict(title="Corr", thickness=14),
+    ))
+    fig.update_layout(
+        title=dict(text="Asset Correlation Matrix", font=dict(size=16)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=max(320, 80 * n),
+        margin=dict(t=60, b=40, l=60, r=40),
+    )
+    return fig
+
+
+def plot_efficient_frontier(frontier_df, max_sharpe, min_vol, Rf, asset_stats=None, tickers=None):
+    """
+    Efficient frontier scatter coloured by Sharpe ratio.
+
+    Parameters
+    ----------
+    asset_stats : list of dicts with keys: name, return_ann, vol_ann
+    tickers     : list of ticker strings — used to embed weights in customdata
+    """
+    weight_cols = tickers if tickers else [
+        c for c in frontier_df.columns if c not in ("Return", "Volatility", "Sharpe")
+    ]
+    customdata = frontier_df[weight_cols].values  # shape (n_sim, n_tickers)
+
+    # Build per-ticker weight lines for the hover tooltip
+    weight_hover = "<br>".join(
+        f"{t}: %{{customdata[{i}]:.1%}}" for i, t in enumerate(weight_cols)
+    )
+
+    fig = go.Figure()
+
+    # ── All random portfolios (coloured by Sharpe) ──
+    fig.add_trace(go.Scatter(
+        x=frontier_df["Volatility"] * 100,
+        y=frontier_df["Return"] * 100,
+        mode="markers",
+        customdata=customdata,
+        marker=dict(
+            color=frontier_df["Sharpe"],
+            colorscale="Viridis",
+            size=5,
+            opacity=0.55,
+            showscale=True,
+            colorbar=dict(title="Sharpe", thickness=14, x=1.02),
+        ),
+        name="Random Portfolios",
+        hovertemplate=(
+            "<b>Portfolio</b><br>"
+            "Vol: %{x:.2f}%   Return: %{y:.2f}%   Sharpe: %{marker.color:.2f}"
+            f"<br><br><b>Weights</b><br>{weight_hover}"
+            "<extra></extra>"
+        ),
+    ))
+
+    # ── Capital Market Line ──
+    ms_vol = float(max_sharpe["Volatility"])
+    ms_ret = float(max_sharpe["Return"])
+    if ms_vol > 0:
+        cml_x = np.linspace(0, ms_vol * 1.7, 60)
+        cml_y = Rf + (ms_ret - Rf) / ms_vol * cml_x
+        fig.add_trace(go.Scatter(
+            x=cml_x * 100, y=cml_y * 100,
+            mode="lines", name="Capital Market Line",
+            line=dict(color="#10b981", width=1.8, dash="dash"),
+        ))
+
+    # ── Individual assets ──
+    if asset_stats:
+        for a in asset_stats:
+            fig.add_trace(go.Scatter(
+                x=[a["vol_ann"] * 100], y=[a["return_ann"] * 100],
+                mode="markers+text",
+                marker=dict(color="#94a3b8", size=11, symbol="circle",
+                            line=dict(color="white", width=1.5)),
+                text=[a["name"]],
+                textposition="top center",
+                name=a["name"],
+                hovertemplate=f"<b>{a['name']}</b><br>Vol: {a['vol_ann']*100:.2f}%<br>"
+                              f"Return: {a['return_ann']*100:.2f}%<extra></extra>",
+            ))
+
+    # ── Min Vol portfolio ──
+    fig.add_trace(go.Scatter(
+        x=[float(min_vol["Volatility"]) * 100],
+        y=[float(min_vol["Return"]) * 100],
+        mode="markers",
+        marker=dict(color="#3b82f6", size=16, symbol="diamond",
+                    line=dict(color="white", width=2)),
+        name=f"Min Vol  (SR={float(min_vol['Sharpe']):.2f})",
+        hovertemplate=f"Min Vol<br>Vol: {float(min_vol['Volatility'])*100:.2f}%<br>"
+                      f"Return: {float(min_vol['Return'])*100:.2f}%<extra></extra>",
+    ))
+
+    # ── Max Sharpe portfolio ──
+    fig.add_trace(go.Scatter(
+        x=[ms_vol * 100], y=[ms_ret * 100],
+        mode="markers",
+        marker=dict(color="#f59e0b", size=18, symbol="star",
+                    line=dict(color="white", width=2)),
+        name=f"Max Sharpe  (SR={float(max_sharpe['Sharpe']):.2f})",
+        hovertemplate=f"Max Sharpe<br>Vol: {ms_vol*100:.2f}%<br>"
+                      f"Return: {ms_ret*100:.2f}%<extra></extra>",
+    ))
+
+    fig.update_layout(
+        title=dict(text="Efficient Frontier (Monte Carlo — 5 000 portfolios)", font=dict(size=16)),
+        xaxis_title="Annualised Volatility (%)",
+        yaxis_title="Annualised Return (%)",
+        hovermode="closest",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60, r=60),
+    )
+    return fig
+
+
+def plot_portfolio_weights(tickers, ms_weights, mv_weights):
+    """Grouped bar chart comparing Max-Sharpe and Min-Vol portfolio weights."""
+    pct_ms = np.array(ms_weights) * 100
+    pct_mv = np.array(mv_weights) * 100
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Max Sharpe ⭐",
+        x=tickers, y=pct_ms,
+        marker_color="#f59e0b",
+        text=[f"{w:.1f}%" for w in pct_ms],
+        textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        name="Min Volatility 💎",
+        x=tickers, y=pct_mv,
+        marker_color="#3b82f6",
+        text=[f"{w:.1f}%" for w in pct_mv],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        barmode="group",
+        title=dict(text="Optimal Portfolio Weights", font=dict(size=16)),
+        xaxis_title="Asset",
+        yaxis_title="Weight (%)",
+        yaxis=dict(range=[0, max(pct_ms.max(), pct_mv.max()) * 1.25]),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=60),
+    )
+    return fig
+
+
+def plot_weights_pie(tickers, weights, title="Selected Portfolio"):
+    """Donut chart for a single portfolio's weight breakdown."""
+    # Filter out near-zero weights for readability
+    pairs = [(t, float(w)) for t, w in zip(tickers, weights) if float(w) > 0.001]
+    labels, values = zip(*pairs) if pairs else (tickers, list(weights))
+
+    fig = go.Figure(go.Pie(
+        labels=list(labels),
+        values=[round(v * 100, 2) for v in values],
+        hole=0.45,
+        texttemplate="<b>%{label}</b><br>%{value:.1f}%",
+        hovertemplate="<b>%{label}</b><br>Weight: %{value:.2f}%<extra></extra>",
+        marker=dict(line=dict(color="rgba(255,255,255,0.15)", width=2)),
+    ))
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=15)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=50, b=20, l=20, r=20),
+        showlegend=True,
+        legend=dict(orientation="v", x=1.02, y=0.5),
+        height=300,
+    )
+    return fig
