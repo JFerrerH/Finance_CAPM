@@ -18,8 +18,8 @@ def calculate_performance_metrics(data, Rf, beta):
     # Treynor ratio
     treynor = (ann_return - Rf) / float(beta) if beta and float(beta) != 0 else None
 
-    # Sortino ratio — downside deviation only
-    downside = stock_returns[stock_returns < monthly_rf]
+    # Sortino ratio — downside deviation below zero (any negative return is bad)
+    downside = stock_returns[stock_returns < 0]
     down_vol = float(downside.std() * np.sqrt(12)) if len(downside) > 1 else None
     sortino = (ann_return - Rf) / down_vol if down_vol and down_vol > 0 else None
 

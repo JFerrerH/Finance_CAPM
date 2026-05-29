@@ -18,7 +18,11 @@ def calculate_capm(data, Rf):
     beta_pvalue  = float(lm.pvalues.iloc[1])
 
     # Annualised Jensen's Alpha (compound)
-    jensen_alpha_annual = float((1 + float(intercept)) ** 12 - 1)
+    # The raw OLS intercept = Jensen's α + Rf/12 * (1 - β), so we must subtract
+    # the Rf bias term to isolate true excess return above the CAPM prediction.
+    monthly_rf = Rf / 12
+    jensen_alpha_monthly = float(intercept) - monthly_rf * (1 - float(beta))
+    jensen_alpha_annual  = float((1 + jensen_alpha_monthly) ** 12 - 1)
 
     # Risk decomposition: systematic vs unsystematic
     market_var      = float(data["Monthly_Return_Index"].var())

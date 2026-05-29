@@ -317,10 +317,15 @@ elif page == "📍  Thesis":
     if sector_pe <= 0:
         sector_pe = 25
 
+    # Revenue CAGR drives DCF short-term growth (replaces the FCF-size tiers)
+    rev_cagr  = calc_cagr(inc.get("revenue"))
+    dividend  = (info.get("dividendRate") or 0) if info else 0
+
     pe_fair   = calculate_pe_fair_value(eps, sector_pe)
-    dcf_tuple = calculate_dcf(fcf_raw, shares_out, required_return)
+    dcf_tuple = calculate_dcf(fcf_raw, shares_out, required_return, rev_cagr)
     dcf_price = dcf_tuple[0] if dcf_tuple else None
-    estimates = [p for p in [dcf_price, pe_fair] if p and p > 0]
+    ddm_price = calculate_ddm(dividend, required_return, current_price)
+    estimates = [p for p in [dcf_price, pe_fair, ddm_price] if p and p > 0]
     valuation_upside = (
         (sum(estimates) / len(estimates) - current_price) / current_price
         if estimates and current_price else None
@@ -336,12 +341,13 @@ elif page == "📍  Thesis":
     cycle_phase = signals.get("cycle_phase", "Transition")
 
     # ── Compute scores ────────────────────────────────────────────────────────
+    sector    = (info.get("sector") or "") if info else ""
     s_alpha   = score_alpha(capm)
     s_risk    = score_risk_return(perf)
     s_mom     = score_momentum(perf, capm)
     s_fin     = score_financial_health(inc, cf, bal)
-    s_val     = score_valuation(current_price, dcf_price, pe_fair)
-    s_macro   = score_macro_fit(signals, beta)
+    s_val     = score_valuation(current_price, dcf_price, pe_fair, ddm_price)
+    s_macro   = score_macro_fit(signals, beta, sector)
 
     score_dict = {
         "Alpha Quality":    s_alpha[0],
@@ -351,10 +357,7 @@ elif page == "📍  Thesis":
         "Valuation":        s_val[0],
         "Macro Fit":        s_macro[0],
     }
-    verdict, verdict_color = get_verdict(score_dict)
-
-    valid_scores = [v for v in score_dict.values() if v is not None]
-    avg_score    = sum(valid_scores) / len(valid_scores) if valid_scores else 0
+    verdict, verdict_color, avg_score = get_verdict(score_dict)
 
     # Bull / bear case
     bull_pts, bear_pts = build_bull_bear(
@@ -608,8 +611,15 @@ elif page == "🎲  Risk":
     with mc2:
         n_months = st.slider("Horizon (months)", 6, 60, 24, step=6)
 
+    _mc_signals = compute_cycle_signals(
+        get_macro_data(
+            (datetime.date.today() - datetime.timedelta(days=730)).isoformat(),
+            datetime.date.today().isoformat(),
+        )
+    )
     _, pct_paths, final_prices = run_monte_carlo(
         returns, current_price_mc, n_sims, n_months,
+        cycle_signals=_mc_signals, beta=beta,
     )
     future_dates = pd.date_range(
         start=data_accion.index[-1], periods=n_months + 1, freq="MS",
@@ -1282,13 +1292,12 @@ elif page == "💰  Valuation":
     if sector_pe <= 0:
         sector_pe = 25
 
-    pe_fair_price                          = calculate_pe_fair_value(eps, sector_pe)
-    ddm_price                              = calculate_ddm(dividend, required_return)
-    dcf_price, annual_fcf, total_val, dcf_warn = calculate_dcf(fcf, shares_out, required_return)
+    pe_fair_price = calculate_pe_fair_value(eps, sector_pe)
+    ddm_price     = calculate_ddm(dividend, required_return, current_price)
 
     fmp_df = get_fmp_income_statement(ticker_accion, api_key)
 
-    # CAGR for Peter Lynch: prefer FMP EBITDA; fall back to yfinance Net Income
+    # Historical CAGR: drives both DCF short-term growth and Peter Lynch fair value
     if fmp_df is not None and "ebitda" in fmp_df.columns and eps:
         gr = calculate_5yr_cagr_from_fmp(fmp_df, "ebitda")
     else:
@@ -1296,6 +1305,15 @@ elif page == "💰  Valuation":
         _inc_v   = extract_income_data(_stmts_v.get("income"))
         _ni      = _inc_v.get("net_income") or _inc_v.get("operating_income")
         gr       = calc_cagr(_ni) if _ni else None
+
+    # Revenue CAGR from yfinance income statement (DCF short-term growth driver)
+    _stmts_dcf = get_financial_statements(ticker_accion)
+    _inc_dcf   = extract_income_data(_stmts_dcf.get("income"))
+    rev_cagr_v = calc_cagr(_inc_dcf.get("revenue"))
+
+    dcf_price, annual_fcf, total_val, dcf_warn = calculate_dcf(
+        fcf, shares_out, required_return, rev_cagr_v
+    )
 
     if gr is not None and eps:
         lynch_price, lynch_caption, lynch_warn = calculate_lynch_fair_value(eps, gr)

@@ -16,32 +16,62 @@ def calculate_pe_fair_value(eps, sector_pe):
     return None
 
 
-def calculate_ddm(dividend, required_return, dividend_growth=0.05):
-    if dividend > 1 and required_return > dividend_growth:
-        try:
-            return dividend * (1 + dividend_growth) / (required_return - dividend_growth)
-        except ZeroDivisionError:
-            pass
-    return None
+def calculate_ddm(dividend, required_return, current_price=None, dividend_growth=0.05):
+    """
+    Gordon Growth Model: P = D1 / (r - g).
+
+    Only meaningful for companies where dividends represent a significant portion
+    of shareholder returns. Requires dividend yield >= 1.5% — below that threshold
+    the stock's value is driven by growth/buybacks, not dividends, and DDM produces
+    nonsensical results (e.g. AAPL at 0.5% yield gives a ~$8 fair value).
+    """
+    if not dividend or dividend <= 0:
+        return None
+    if required_return <= dividend_growth:
+        return None
+
+    # Yield gate: DDM is theoretically invalid for low-yield stocks
+    if current_price and current_price > 0:
+        yield_ = dividend / current_price
+        if yield_ < 0.015:   # < 1.5% yield → model not applicable
+            return None
+    else:
+        # No price available: fall back to a minimum dividend floor
+        if dividend < 1.0:
+            return None
+
+    try:
+        return dividend * (1 + dividend_growth) / (required_return - dividend_growth)
+    except ZeroDivisionError:
+        return None
 
 
-def calculate_dcf(fcf, shares_outstanding, required_return):
-    """Returns (dcf_price, annual_fcf, total_value, warning_msg)."""
+def calculate_dcf(fcf, shares_outstanding, required_return, revenue_cagr=None):
+    """
+    Returns (dcf_price, annual_fcf, total_value, warning_msg).
+
+    revenue_cagr : historical revenue CAGR from financials — drives the short-term
+                   growth assumption. When None a conservative 5% default is used.
+                   Clamped to [1%, 20%] to avoid compounding extreme outliers.
+    """
     if not (fcf and fcf > 0 and shares_outstanding > 0):
         return None, None, None, None
 
     try:
         annual_fcf = fcf
 
-        if annual_fcf > 20_000_000_000:
-            short_term_growth, terminal_growth = 0.05, 0.02
-        elif annual_fcf > 5_000_000_000:
-            short_term_growth, terminal_growth = 0.06, 0.025
+        # Short-term growth: anchored to actual historical revenue trajectory,
+        # mean-reverted (future growth is rarely as extreme as the past).
+        if revenue_cagr is not None and revenue_cagr > 0:
+            short_term_growth = max(0.01, min(0.20, revenue_cagr * 0.80))
         else:
-            short_term_growth, terminal_growth = 0.10, 0.03
+            short_term_growth = 0.05   # conservative default when no history available
+
+        # Terminal growth: long-run nominal GDP (2.5% is the standard DCF convention).
+        terminal_growth = 0.025
 
         forecast_years = 5
-        discount_rate = required_return
+        discount_rate  = required_return
 
         fcf_list = [
             annual_fcf * (1 + short_term_growth) ** y / (1 + discount_rate) ** y
