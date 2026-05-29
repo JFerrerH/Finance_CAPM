@@ -861,6 +861,55 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
     return m
 
 
+def compute_short_cycle_path(macro_data: dict) -> pd.DataFrame:
+    """
+    Computes the historical trajectory through the Dalio Growth/Inflation quadrant
+    for each month in macro_data. Returns a DataFrame with columns:
+        growth    — growth_score ∈ [-1, +1]
+        inflation — inflation_score ∈ [-1, +1]
+    indexed by month-end date.
+
+    Uses the same signal definitions as compute_cycle_signals so the path
+    is fully consistent with the current-position marker in the quadrant chart.
+    """
+    sp   = macro_data.get("S&P 500")
+    gold = macro_data.get("Gold")
+    tnx  = macro_data.get("10Y Yield")
+
+    if sp is None or len(sp) < 7:
+        return pd.DataFrame(columns=["growth", "inflation"])
+
+    records = []
+    for i in range(6, len(sp)):
+        date = sp.index[i]
+
+        # Growth score: S&P 500 6M momentum clamped to [-1, 1]
+        sp_6m  = float(sp.iloc[i]) / float(sp.iloc[i - 6]) - 1
+        gs     = max(-1.0, min(1.0, sp_6m * 5))
+
+        # Inflation score: Gold 6M + rate level
+        if gold is not None and len(gold) > i and len(gold) > i - 6:
+            gold_6m = float(gold.iloc[i]) / float(gold.iloc[i - 6]) - 1
+        elif gold is not None and len(gold) >= 7:
+            gold_6m = float(gold.iloc[-1]) / float(gold.iloc[-7]) - 1
+        else:
+            gold_6m = 0.0
+
+        if tnx is not None and len(tnx) > i:
+            rate_lv = float(tnx.iloc[i])
+        elif tnx is not None and not tnx.empty:
+            rate_lv = float(tnx.iloc[-1])
+        else:
+            rate_lv = 2.0
+
+        raw_infl = gold_6m * 3.0 + max(0.0, (rate_lv - 2.0) / 8.0)
+        infl_s   = max(-1.0, min(1.0, raw_infl))
+
+        records.append({"date": date, "growth": gs, "inflation": infl_s})
+
+    return pd.DataFrame(records).set_index("date")
+
+
 def macro_implication(cycle_phase: str, beta: float, ticker: str) -> str:
     """
     Returns a one-paragraph plain-English implication of the macro cycle

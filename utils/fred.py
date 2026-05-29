@@ -46,6 +46,48 @@ FRED_SERIES: dict[str, tuple[str, str]] = {
 }
 
 
+@st.cache_data(ttl=86_400 * 7, show_spinner=False)
+def get_big_cycle_history(api_key: str) -> dict:
+    """
+    Fetches long-term Debt/GDP and Fed Funds from 1966 onward for the Big Cycle
+    history chart. Cached weekly — these series change slowly.
+    Returns {name: pd.Series} or empty dict if unavailable.
+    """
+    if not api_key:
+        return {}
+    today = str(pd.Timestamp.today().date())
+    series = {
+        "Debt/GDP":  ("GFDEGDQ188S", "q", "1966-01-01"),
+        "Fed Funds": ("FEDFUNDS",    "m", "1966-01-01"),
+    }
+    result: dict = {}
+    for name, (sid, freq, start) in series.items():
+        try:
+            resp = requests.get(
+                FRED_BASE,
+                params={"series_id": sid, "observation_start": start,
+                        "observation_end": today, "frequency": freq,
+                        "api_key": api_key, "file_type": "json"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                continue
+            records = [
+                {"date": pd.to_datetime(obs["date"]), "value": float(obs["value"])}
+                for obs in resp.json().get("observations", [])
+                if obs.get("value") not in (None, ".")
+            ]
+            if not records:
+                continue
+            s = pd.DataFrame(records).set_index("date")["value"]
+            if freq in ("d", "q"):
+                s = s.resample("ME").last()
+            result[name] = s.dropna()
+        except Exception:
+            pass
+    return result
+
+
 @st.cache_data(ttl=86_400, show_spinner=False)
 def get_economic_data(api_key: str, start: str, end: str) -> dict:
     """

@@ -25,8 +25,8 @@ from utils.valuation import (
     calculate_dcf,
     calculate_lynch_fair_value,
 )
-from utils.macro import get_macro_data, compute_cycle_signals, macro_implication
-from utils.fred import get_economic_data
+from utils.macro import get_macro_data, compute_cycle_signals, macro_implication, compute_short_cycle_path
+from utils.fred import get_economic_data, get_big_cycle_history
 from utils.scoring import (
     score_alpha, score_risk_return, score_momentum,
     score_financial_health, score_valuation, score_macro_fit,
@@ -53,6 +53,8 @@ from utils.charts import (
     plot_cashflow_bars,
     plot_capital_structure,
     plot_dalio_quadrant,
+    plot_short_cycle_path,
+    plot_big_cycle_history,
     plot_macro_history,
     plot_score_breakdown,
 )
@@ -706,12 +708,19 @@ elif page == "🌍  Macro":
         macro_data   = get_macro_data(start_macro, today_str)
         fred_api_key = st.secrets.get("fred", {}).get("api_key", "")
         fred_data    = get_economic_data(fred_api_key, start_macro, today_str) if fred_api_key else {}
+        bc_history   = get_big_cycle_history(fred_api_key) if fred_api_key else {}
 
     if not macro_data:
         st.warning("Could not load macro data. Please try again later.")
         st.stop()
 
-    signals = compute_cycle_signals(macro_data, fred_data)
+    signals    = compute_cycle_signals(macro_data, fred_data)
+
+    # Fetch up to 10 years for the short cycle chart — more history shows full crests
+    # and valleys.  Uses the same cached function, different start date = separate cache entry.
+    _start_long = (datetime.date.today() - datetime.timedelta(days=3650)).isoformat()
+    macro_data_long = get_macro_data(_start_long, today_str)
+    cycle_path = compute_short_cycle_path(macro_data_long)
 
     # ── KPI strip ─────────────────────────────────────────────────────────────
     section_divider("Current Market Conditions")
@@ -793,9 +802,10 @@ elif page == "🌍  Macro":
     section_divider("Economic Cycle Positioning")
     q_col, desc_col = st.columns([1, 1], gap="large")
 
+    gs  = signals.get("growth_score", 0.0)
+    ins = signals.get("inflation_score", 0.0)
+
     with q_col:
-        gs  = signals.get("growth_score", 0.0)
-        ins = signals.get("inflation_score", 0.0)
         st.plotly_chart(
             plot_dalio_quadrant(gs, ins, signals["cycle_phase"], signals["cycle_color"]),
             use_container_width=True, theme="streamlit",
@@ -821,6 +831,30 @@ elif page == "🌍  Macro":
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ── Short cycle trajectory ────────────────────────────────────────────────
+    if not cycle_path.empty:
+        section_divider("Short Cycle — Growth & Inflation Over Time")
+
+        _ctrl_col, _ = st.columns([1, 3])
+        with _ctrl_col:
+            _years = st.slider(
+                "History window (years)", min_value=1,
+                max_value=min(10, max(1, len(cycle_path) // 12)),
+                value=min(5, max(1, len(cycle_path) // 12)),
+                step=1, key="short_cycle_years",
+            )
+
+        _cutoff = pd.Timestamp.today() - pd.DateOffset(years=_years)
+        _path   = cycle_path[cycle_path.index >= _cutoff]
+
+        st.plotly_chart(
+            plot_short_cycle_path(
+                _path, gs, ins, signals["cycle_phase"], signals["cycle_color"],
+                sp_series=macro_data_long.get("S&P 500"),
+            ),
+            use_container_width=True, theme="streamlit",
+        )
 
     # ── Cycle maturity ────────────────────────────────────────────────────────
     section_divider("Where Are We Within This Phase?")
@@ -944,6 +978,12 @@ elif page == "🌍  Macro":
             {"<div style='font-size:0.88rem;opacity:0.75;font-style:italic;border-top:1px solid rgba(148,163,184,0.2);padding-top:10px;margin-top:4px;'><b>Short-cycle context:</b> " + bc_note + "</div>" if bc_note else ""}
         </div>
         """, unsafe_allow_html=True)
+
+        if bc_history:
+            st.plotly_chart(
+                plot_big_cycle_history(bc_history, bc_phase, bc_color, bc_icon),
+                use_container_width=True, theme="streamlit",
+            )
 
     # ── Economic Fundamentals (FRED) ─────────────────────────────────────────
     section_divider("Economic Fundamentals")

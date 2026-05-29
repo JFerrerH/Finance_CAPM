@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 
 
@@ -935,6 +936,345 @@ def plot_macro_history(macro_data: dict, names: list[str]) -> go.Figure:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified",
         margin=dict(t=60, b=40),
+    )
+    return fig
+
+
+def plot_short_cycle_path(path_df, current_growth: float, current_inflation: float,
+                          cycle_phase: str, cycle_color: str,
+                          sp_series=None) -> go.Figure:
+    """
+    Dalio short-term debt cycle visualization.
+
+    Primary (sp_series provided): S&P 500 indexed to 100 oscillating above/below
+    its long-term log-linear productivity trend — matching Dalio's 'How the Economic
+    Machine Works' diagram where short cycles are waves riding above/below the
+    rising productivity line.  Green fill = expansion above trend; red = contraction.
+
+    Fallback (no sp_series): growth + inflation signals as two time-series lines.
+    """
+    PHASE_COLORS = {
+        "Goldilocks":        "rgba(16,185,129,0.12)",
+        "Inflationary Boom": "rgba(245,158,11,0.12)",
+        "Stagflation":       "rgba(239,68,68,0.12)",
+        "Deflationary Bust": "rgba(99,102,241,0.12)",
+    }
+
+    def _phase_at(g, infl):
+        if g > 0 and infl <= 0:  return "Goldilocks"
+        if g > 0 and infl >  0:  return "Inflationary Boom"
+        if g <= 0 and infl > 0:  return "Stagflation"
+        return "Deflationary Bust"
+
+    fig = go.Figure()
+    if path_df.empty:
+        return fig
+
+    # ── Phase background spans ─────────────────────────────────────────────────
+    pf_dates = path_df.index
+    phases   = [_phase_at(path_df["growth"].iloc[i], path_df["inflation"].iloc[i])
+                for i in range(len(path_df))]
+    runs: list[tuple] = []
+    run_start, cur = 0, phases[0]
+    for i in range(1, len(phases)):
+        if phases[i] != cur:
+            runs.append((run_start, i - 1, cur))
+            run_start, cur = i, phases[i]
+    runs.append((run_start, len(phases) - 1, cur))
+
+    labeled: set = set()
+    for s_i, e_i, ph in runs:
+        x0 = pf_dates[s_i].strftime("%Y-%m-%d")
+        x1 = pf_dates[e_i].strftime("%Y-%m-%d")
+        fig.add_shape(type="rect", xref="x", yref="paper",
+                      x0=x0, x1=x1, y0=0, y1=1,
+                      fillcolor=PHASE_COLORS[ph], line_width=0, layer="below")
+        if ph not in labeled and (e_i - s_i) >= 3:
+            mid = pf_dates[(s_i + e_i) // 2].strftime("%Y-%m-%d")
+            fig.add_annotation(xref="x", yref="paper",
+                               x=mid, y=0.97,
+                               text=f"<b>{ph}</b>",
+                               showarrow=False, xanchor="center",
+                               font=dict(size=9, color="rgba(220,220,220,0.50)"))
+            labeled.add(ph)
+
+    # ── Primary: S&P 500 vs log-linear productivity trend ─────────────────────
+    if sp_series is not None and len(sp_series) >= 24:
+        window_start = pf_dates[0]
+        sp_win = sp_series[sp_series.index >= window_start].dropna()
+
+        if len(sp_win) >= 12:
+            # Fit log-linear trend on the FULL sp_series (long-horizon structural trend)
+            t_all    = np.arange(len(sp_series), dtype=float)
+            log_all  = np.log(sp_series.values.astype(float))
+            slope, intercept = np.polyfit(t_all, log_all, 1)
+
+            # Map window dates to positions in the full series for trend evaluation
+            pos   = np.clip(sp_series.index.searchsorted(sp_win.index), 0, len(sp_series) - 1)
+            t_win = pos.astype(float)
+
+            sp_vals    = sp_win.values.astype(float)
+            trend_vals = np.exp(slope * t_win + intercept)
+
+            # Index both to 100 at window start so they share a common baseline
+            sp_idx    = sp_vals    / sp_vals[0]    * 100
+            trend_idx = trend_vals / trend_vals[0] * 100
+
+            dates_sp = sp_win.index
+
+            # Bidirectional fill: green above trend (expansion), red below (contraction)
+            # tonexty fills from the current trace DOWN to the previous trace.
+            above_clip = np.where(sp_idx >= trend_idx, sp_idx, trend_idx)
+            below_clip = np.where(sp_idx <= trend_idx, sp_idx, trend_idx)
+
+            # Green band: trend (reference) → above_clip
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(trend_idx),
+                mode="lines", line=dict(width=0),
+                showlegend=False, hoverinfo="skip",
+            ))
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(above_clip),
+                mode="lines", line=dict(width=0),
+                fill="tonexty", fillcolor="rgba(16,185,129,0.22)",
+                showlegend=False, hoverinfo="skip",
+            ))
+
+            # Red band: below_clip (reference) → trend
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(below_clip),
+                mode="lines", line=dict(width=0),
+                showlegend=False, hoverinfo="skip",
+            ))
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(trend_idx),
+                mode="lines", line=dict(width=0),
+                fill="tonexty", fillcolor="rgba(239,68,68,0.22)",
+                showlegend=False, hoverinfo="skip",
+            ))
+
+            # Productivity trend line (structural)
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(trend_idx),
+                mode="lines", name="Productivity Trend",
+                line=dict(color="rgba(148,163,184,0.80)", width=1.8, dash="dash"),
+                hovertemplate="<b>Trend</b>: %{y:.1f}<br>%{x|%b %Y}<extra></extra>",
+            ))
+
+            # S&P 500 oscillating curve
+            fig.add_trace(go.Scatter(
+                x=list(dates_sp), y=list(sp_idx),
+                mode="lines", name="S&P 500",
+                line=dict(color="#3b82f6", width=2.8),
+                hovertemplate="<b>S&P 500</b>: %{y:.1f}<br>%{x|%b %Y}<extra></extra>",
+            ))
+
+            # NOW marker
+            now_str = dates_sp[-1].strftime("%Y-%m-%d")
+            now_y   = float(sp_idx[-1])
+            fig.add_shape(type="line", xref="x", yref="paper",
+                          x0=now_str, x1=now_str, y0=0, y1=1,
+                          line=dict(color=cycle_color, width=1.5, dash="dot"))
+            fig.add_trace(go.Scatter(
+                x=[dates_sp[-1]], y=[now_y],
+                mode="markers",
+                marker=dict(symbol="circle", size=11, color=cycle_color,
+                            line=dict(color="white", width=2)),
+                name=f"NOW — {cycle_phase}",
+                hovertemplate=(
+                    f"<b>NOW — {cycle_phase}</b><br>"
+                    "%{x|%b %Y}: %{y:.1f}<extra></extra>"
+                ),
+            ))
+            fig.add_annotation(xref="x", yref="paper",
+                               x=now_str, y=0.86,
+                               text=f"  NOW<br><b>{cycle_phase}</b>",
+                               showarrow=False, xanchor="left",
+                               font=dict(color=cycle_color, size=10),
+                               bgcolor="rgba(15,15,20,0.65)", borderpad=4)
+
+            fig.update_layout(
+                title=dict(
+                    text="Short Cycle — S&P 500 Oscillating Around Productivity Trend (Dalio)",
+                    font=dict(size=15),
+                ),
+                xaxis=dict(showgrid=False, showline=False),
+                yaxis=dict(
+                    title="Index (= 100 at window start)",
+                    showgrid=True, gridcolor="rgba(150,150,150,0.07)",
+                    zeroline=False,
+                ),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                            xanchor="left", x=0, font=dict(size=11)),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                hovermode="x unified",
+                height=430,
+                margin=dict(t=60, b=40, l=80, r=30),
+            )
+            return fig
+
+    # ── Fallback: growth & inflation signal lines ──────────────────────────────
+    dates  = path_df.index
+    g_vals = path_df["growth"].values
+    i_vals = path_df["inflation"].values
+
+    fig.add_hline(y=0, line_dash="dot",
+                  line_color="rgba(200,200,200,0.35)", line_width=1)
+
+    fig.add_trace(go.Scatter(
+        x=dates, y=g_vals,
+        mode="lines", name="Growth (S&P momentum)",
+        line=dict(color="#3b82f6", width=2.5),
+        fill="tozeroy", fillcolor="rgba(59,130,246,0.12)",
+        hovertemplate="<b>%{x|%b %Y}</b>  Growth: %{y:+.2f}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates, y=i_vals,
+        mode="lines", name="Inflation (Gold + rates)",
+        line=dict(color="#f59e0b", width=2.5),
+        fill="tozeroy", fillcolor="rgba(245,158,11,0.09)",
+        hovertemplate="<b>%{x|%b %Y}</b>  Inflation: %{y:+.2f}<extra></extra>",
+    ))
+
+    now_str = dates[-1].strftime("%Y-%m-%d")
+    fig.add_shape(type="line", xref="x", yref="paper",
+                  x0=now_str, x1=now_str, y0=0, y1=1,
+                  line=dict(color=cycle_color, width=2))
+    fig.add_annotation(xref="x", yref="paper",
+                       x=now_str, y=0.88,
+                       text=(f"NOW<br><b>{cycle_phase}</b><br>"
+                             f"<span style='font-size:9px'>"
+                             f"G {current_growth:+.2f} / I {current_inflation:+.2f}</span>"),
+                       showarrow=False, xanchor="left",
+                       font=dict(color=cycle_color, size=10),
+                       bgcolor="rgba(15,15,20,0.6)", borderpad=4)
+
+    fig.update_layout(
+        title=dict(text="Short Cycle — Growth & Inflation Over Time (Dalio Framework)",
+                   font=dict(size=15)),
+        xaxis=dict(showgrid=False, showline=False),
+        yaxis=dict(
+            title="Signal strength",
+            range=[-1.15, 1.15],
+            showgrid=True, gridcolor="rgba(150,150,150,0.07)",
+            zeroline=False,
+            tickvals=[-1, -0.5, 0, 0.5, 1],
+            ticktext=["-1  Contraction/Deflation", "-0.5", "0", "+0.5",
+                      "+1  Expansion/Inflation"],
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                    font=dict(size=11)),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
+        height=430,
+        margin=dict(t=60, b=40, l=80, r=30),
+    )
+    return fig
+
+
+def plot_big_cycle_history(history: dict, bc_phase: str, bc_color: str,
+                           bc_icon: str) -> go.Figure:
+    """
+    Long-term chart showing Federal Debt/GDP (%) from ~1966 to today,
+    overlaid with the Federal Funds Rate.
+
+    Horizontal threshold lines mark Dalio's structural danger zones.
+    Key historical events are annotated.
+    The current position is highlighted with a vertical 'NOW' marker.
+    """
+    debt_gdp  = history.get("Debt/GDP")
+    fedfunds  = history.get("Fed Funds")
+
+    if debt_gdp is None or debt_gdp.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="Federal Debt / GDP — History (FRED data unavailable)",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        )
+        return fig
+
+    fig = go.Figure()
+
+    # ── Debt / GDP area ───────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=debt_gdp.index, y=debt_gdp.values,
+        mode="lines", name="Federal Debt / GDP",
+        line=dict(color="#6366f1", width=2.5),
+        fill="tozeroy", fillcolor="rgba(99,102,241,0.08)",
+        hovertemplate="<b>Debt/GDP</b>: %{y:.1f}%<br>%{x|%b %Y}<extra></extra>",
+    ))
+
+    # ── Danger-zone threshold lines ───────────────────────────────────────────
+    for level, label, color in [
+        (90,  "90% — Late Expansion threshold",   "rgba(245,158,11,0.6)"),
+        (115, "115% — Extreme leverage",          "rgba(239,68,68,0.6)"),
+    ]:
+        fig.add_hline(y=level, line_dash="dot", line_color=color, line_width=1.5,
+                      annotation_text=f"  {label}",
+                      annotation_position="top right",
+                      annotation_font=dict(color=color, size=10))
+
+    # ── Fed Funds Rate (secondary axis) ───────────────────────────────────────
+    if fedfunds is not None and not fedfunds.empty:
+        fig.add_trace(go.Scatter(
+            x=fedfunds.index, y=fedfunds.values,
+            mode="lines", name="Fed Funds Rate",
+            line=dict(color="#f59e0b", width=1.5, dash="dot"),
+            yaxis="y2",
+            hovertemplate="<b>Fed Funds</b>: %{y:.2f}%<br>%{x|%b %Y}<extra></extra>",
+            opacity=0.75,
+        ))
+
+    # ── Key historical event annotations ─────────────────────────────────────
+    events = [
+        ("1971-08-15", "Nixon<br>gold window"),
+        ("1981-06-01", "Volcker<br>peak rates"),
+        ("2008-09-15", "GFC"),
+        ("2020-03-01", "COVID"),
+    ]
+    # add_shape + add_annotation avoids add_vline's internal Timestamp arithmetic
+    # which is incompatible with pandas 2.0 on datetime axes.
+    for date_str, label in events:
+        try:
+            dt = pd.to_datetime(date_str)
+            if debt_gdp.index.min() <= dt <= debt_gdp.index.max():
+                x_str = dt.strftime("%Y-%m-%d")
+                fig.add_shape(type="line", xref="x", yref="paper",
+                              x0=x_str, x1=x_str, y0=0, y1=1,
+                              line=dict(color="rgba(148,163,184,0.30)", dash="dot", width=1))
+                fig.add_annotation(xref="x", yref="paper",
+                                   x=x_str, y=0.97,
+                                   text=f"  {label}", showarrow=False,
+                                   font=dict(size=9, color="rgba(148,163,184,0.65)"),
+                                   xanchor="left")
+        except Exception:
+            pass
+
+    # ── Current position ──────────────────────────────────────────────────────
+    now_str = debt_gdp.index.max().strftime("%Y-%m-%d")
+    fig.add_shape(type="line", xref="x", yref="paper",
+                  x0=now_str, x1=now_str, y0=0, y1=1,
+                  line=dict(color=bc_color, dash="solid", width=2))
+    fig.add_annotation(xref="x", yref="paper",
+                       x=now_str, y=0.88,
+                       text=f"  {bc_icon} NOW — {bc_phase}",
+                       showarrow=False,
+                       font=dict(color=bc_color, size=11),
+                       xanchor="left")
+
+    fig.update_layout(
+        title=dict(text="Big Cycle — Federal Debt / GDP Since 1966 (Dalio Long-term Debt Cycle)",
+                   font=dict(size=15)),
+        xaxis=dict(title="", showgrid=False),
+        yaxis=dict(title="Federal Debt / GDP (%)", ticksuffix="%",
+                   showgrid=True, gridcolor="rgba(150,150,150,0.1)"),
+        yaxis2=dict(title="Fed Funds Rate (%)", overlaying="y", side="right",
+                    ticksuffix="%", showgrid=False, range=[0, 25]),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+        height=420,
+        margin=dict(t=65, b=40, l=60, r=70),
     )
     return fig
 
