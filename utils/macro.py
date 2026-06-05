@@ -14,8 +14,8 @@ Indicators used:
     CL=F   — Crude Oil (commodity / inflation proxy)
 """
 
+import numpy as np
 import pandas as pd
-import yfinance as yf
 import streamlit as st
 from utils.data import download_ticker_data
 
@@ -103,6 +103,39 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     """
     s: dict = {}
 
+    # ── FRED data extracted first so it feeds the primary signals ─────────────
+    # Market prices (S&P, gold) are sentiment proxies that decouple from the real
+    # economy. CPI is actual measured inflation; INDPRO is actual production.
+    # When FRED is available, real data takes priority over market-price proxies.
+    _fd = fred_data or {}
+    s["fred_available"] = bool(_fd)
+
+    _gdp_s      = _fd.get("Real GDP")         # GDPC1 — the primary growth measure
+    _cpi_hl_s   = _fd.get("CPI Headline")    # CPIAUCSL — the primary inflation measure
+    _cpi_core_s = _fd.get("CPI Core")
+    _tips5_s    = _fd.get("TIPS 5Y")
+    _tips10_s   = _fd.get("TIPS 10Y")
+    _unemp_s    = _fd.get("Unemployment")
+    _indpro_s   = _fd.get("Industrial Prod")
+
+    cpi_hl_yoy   = round((_pct(_cpi_hl_s,   12) or 0) * 100, 2) if _cpi_hl_s   is not None and len(_cpi_hl_s)   >= 13 else None
+    cpi_core_yoy = round((_pct(_cpi_core_s,  12) or 0) * 100, 2) if _cpi_core_s is not None and len(_cpi_core_s) >= 13 else None
+    cpi_spread   = round(cpi_hl_yoy - cpi_core_yoy, 2) if (cpi_hl_yoy is not None and cpi_core_yoy is not None) else None
+    tips_5y      = round(float(_tips5_s.iloc[-1]),  2) if _tips5_s  is not None and not _tips5_s.empty  else None
+    tips_10y     = round(float(_tips10_s.iloc[-1]), 2) if _tips10_s is not None and not _tips10_s.empty else None
+    tips_5y_3m   = round(_abs(_tips5_s,  3) or 0, 3)  if _tips5_s  is not None and len(_tips5_s)  >= 4  else None
+    tips_10y_3m  = round(_abs(_tips10_s, 3) or 0, 3)  if _tips10_s is not None and len(_tips10_s) >= 4  else None
+    unemp_current = round(float(_unemp_s.iloc[-1]), 1) if _unemp_s is not None and not _unemp_s.empty else None
+    unemp_3m_chg  = round(_abs(_unemp_s, 3) or 0, 2)  if _unemp_s is not None and len(_unemp_s) >= 4  else None
+    indpro_3m     = round((_pct(_indpro_s, 3) or 0) * 100, 2) if _indpro_s is not None and len(_indpro_s) >= 4 else None
+
+    s.update(
+        cpi_headline_yoy=cpi_hl_yoy, cpi_core_yoy=cpi_core_yoy, cpi_spread=cpi_spread,
+        tips_5y=tips_5y, tips_10y=tips_10y, tips_5y_3m_chg=tips_5y_3m, tips_10y_3m_chg=tips_10y_3m,
+        unemployment=unemp_current, unemployment_3m_chg=unemp_3m_chg,
+        indpro_3m=indpro_3m,
+    )
+
     # ── Interest rates ────────────────────────────────────────────────────────
     tnx = macro_data.get("10Y Yield")
     if tnx is not None and len(tnx) >= 4:
@@ -131,29 +164,132 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     else:
         s.update(vix_current=None, vix_label="—", vix_color="#94a3b8")
 
-    # ── Growth (S&P 500 proxy) ────────────────────────────────────────────────
+    # ── Growth signal ─────────────────────────────────────────────────────────
+    # ── S&P metrics (display only, not used for growth classification) ─────────
     sp = macro_data.get("S&P 500")
-    if sp is not None and len(sp) >= 7:
-        sp_6m = _pct(sp, 6) or 0
-        s["sp_6m"]          = round(sp_6m * 100, 1)
-        s["sp_12m"]         = round((_pct(sp, min(12, len(sp) - 1)) or 0) * 100, 1)
-        s["growth_signal"]  = (
-            "Expanding"   if sp_6m >  0.03 else
-            "Contracting" if sp_6m < -0.03 else
+    if sp is not None and len(sp) >= 9:
+        sp_6m_smooth  = float(np.mean([float(sp.iloc[-1])/float(sp.iloc[-7])-1,
+                                        float(sp.iloc[-2])/float(sp.iloc[-8])-1,
+                                        float(sp.iloc[-3])/float(sp.iloc[-9])-1]))
+        s["sp_6m"]  = round((_pct(sp, 6) or 0) * 100, 1)
+        s["sp_12m"] = round((_pct(sp, min(12, len(sp)-1)) or 0) * 100, 1)
+    elif sp is not None and len(sp) >= 7:
+        sp_6m_smooth = _pct(sp, 6) or 0
+        s["sp_6m"]  = round(sp_6m_smooth * 100, 1)
+        s["sp_12m"] = round((_pct(sp, min(12, len(sp)-1)) or 0) * 100, 1)
+    else:
+        sp_6m_smooth = 0.0
+        s.update(sp_6m=None, sp_12m=None)
+
+    # ── Growth signal: Real GDP vs its own long-run trend (FRED GDPC1) ────────
+    # This is the correct Dalio axis: is the economy growing above or below
+    # its structural potential? Real GDP is the definition of economic growth.
+    # We fit a log-linear trend to the full available GDP history — the trend
+    # rate is computed FROM THE DATA, not hardcoded. Deviation above = expanding,
+    # below = contracting, regardless of what financial markets are doing.
+    #
+    # GDP is quarterly (published ~1 month after quarter end). When GDP data is
+    # unavailable (no FRED key), we fall back to S&P 500 as a last resort only.
+    if _gdp_s is not None and len(_gdp_s) >= 5:
+        # GDP data is quarterly, resampled to month-end dates only.
+        # Filter to post-2020 data for the trend fit: the COVID crash (2020 Q2)
+        # creates a massive outlier that pulls a full-history trend downward,
+        # making current GDP appear above trend when it may not be.
+        # Post-COVID data (2021 onward) captures the "new normal" trajectory.
+        _gdp_post = _gdp_s[_gdp_s.index >= "2021-01-01"]
+        _gdp_fit  = _gdp_post if len(_gdp_post) >= 8 else _gdp_s  # fallback to full if too short
+        _gv_fit   = _gdp_fit.values.astype(float)
+        _t_fit    = np.arange(len(_gv_fit), dtype=float)
+
+        # Log-linear trend on the fit window
+        _slope, _icept = np.polyfit(_t_fit, np.log(_gv_fit), 1)
+
+        # Evaluate trend at the position of the LATEST data point
+        # (offset from fit window start to current position)
+        _gv_all   = _gdp_s.values.astype(float)
+        _trend_now = float(np.exp(_slope * (len(_gv_fit) - 1) + _icept))
+
+        # % the current GDP level is above (+) or below (−) its structural trend
+        gdp_vs_trend = (_gv_all[-1] / _trend_now - 1) * 100
+
+        # YoY: compare to 4 quarters ago (quarterly data → 4 positions back = 1 year)
+        gdp_yoy = (_gv_all[-1] / _gv_all[-5] - 1) * 100 if len(_gv_all) >= 5 else 0.0
+
+        s["gdp_yoy"]       = round(gdp_yoy, 2)
+        s["gdp_vs_trend"]  = round(gdp_vs_trend, 2)
+        s["gdp_trend_ann"] = round(float((np.exp(_slope * 4) - 1) * 100), 2)
+        s["growth_source"] = "FRED Real GDP vs post-2020 trend"
+
+        # Score: ±5% deviation from trend = ±1.0
+        s["growth_score"] = round(max(-1.0, min(1.0, gdp_vs_trend / 5.0)), 3)
+
+        # Signal
+        if gdp_vs_trend > 0.5:
+            s["growth_signal"] = "Expanding"
+        elif gdp_vs_trend < -0.5:
+            s["growth_signal"] = "Contracting"
+        else:
+            s["growth_signal"] = "Flat"
+
+    else:
+        # Fallback: S&P 500 momentum when FRED key is not configured
+        sp_score = max(-1.0, min(1.0, sp_6m_smooth * 5))
+        s["growth_signal"] = (
+            "Expanding"   if sp_6m_smooth >  0.03 else
+            "Contracting" if sp_6m_smooth < -0.03 else
             "Flat"
         )
-        s["growth_score"]   = max(-1.0, min(1.0, sp_6m * 5))   # normalised
-    else:
-        s.update(sp_6m=None, sp_12m=None, growth_signal="—", growth_score=0.0)
+        s["growth_score"] = sp_score
+        s["growth_source"] = "S&P 500 (no FRED key)"
 
-    # ── Inflation (Gold + rate level proxy) ──────────────────────────────────
+    # ── Inflation signal ──────────────────────────────────────────────────────
+    # Primary source: FRED CPI (actual measured inflation).
+    # Gold + rates is a fallback for when no FRED key is configured — it measures
+    # market sentiment about inflation, not inflation itself, and can diverge from
+    # the real economy (e.g. S&P up on rate-cut hopes while CPI stays at 4%).
+    #
+    # CPI score formula: (core_cpi_yoy - 2.0) / 4.0, clamped to [-1, 1].
+    # At the Fed's 2% target the score is 0 (neutral). At 4% it's 0.5 (elevated).
+    # Thresholds are relative to the 2% target, not arbitrary numbers.
     gold = macro_data.get("Gold")
+
+    # Always compute gold_6m for display and the geopolitical filter
     if gold is not None and len(gold) >= 7:
-        gold_6m = _pct(gold, 6) or 0
-        s["gold_6m"] = round(gold_6m * 100, 1)
-        rate_lv      = s.get("rate_current") or 0
-        # composite: gold up + rates elevated → inflationary
-        raw = gold_6m * 3.0 + max(0.0, (rate_lv - 2.0) / 8.0)
+        s["gold_6m"] = round((_pct(gold, 6) or 0) * 100, 1)
+    else:
+        s["gold_6m"] = None
+
+    if cpi_hl_yoy is not None:
+        # Primary: FRED headline CPI — what the economy actually experiences.
+        # Dalio's inflation measure is broad (consumers, businesses, asset prices),
+        # not the central bank's preferred ex-food/energy measure. The geopolitical
+        # filter below handles cases where headline is purely supply-driven (oil spike).
+        # Threshold: 3.5% = clearly above the Fed's 2% target. At 4% headline, score=0.5.
+        s["inflation_score"]  = max(-1.0, min(1.0, (cpi_hl_yoy - 2.0) / 4.0))
+        s["inflation_signal"] = (
+            "Elevated"  if cpi_hl_yoy > 3.5 else
+            "Contained" if cpi_hl_yoy < 1.5 else
+            "Moderate"
+        )
+        s["inflation_source"] = "FRED CPI (headline)"
+    elif gold is not None and len(gold) >= 7:
+        # Fallback: smoothed gold + rates proxy (no FRED key).
+        # Average last 3 months so a single day's gold move can't flip the phase.
+        def _raw_infl(gold_s, idx, tnx_s):
+            g6m  = float(gold_s.iloc[idx]) / float(gold_s.iloc[idx - 6]) - 1
+            rate = float(tnx_s.iloc[idx]) if tnx_s is not None and len(tnx_s) > abs(idx) else 2.0
+            return g6m * 3.0 + max(0.0, (rate - 2.0) / 8.0)
+
+        n = len(gold)
+        if n >= 9:
+            raw = float(np.mean([_raw_infl(gold, -1, tnx),
+                                  _raw_infl(gold, -2, tnx),
+                                  _raw_infl(gold, -3, tnx)]))
+        else:
+            gold_6m_v = _pct(gold, 6) or 0
+            rate_lv   = s.get("rate_current") or 0
+            raw = gold_6m_v * 3.0 + max(0.0, (rate_lv - 2.0) / 8.0)
+
         s["inflation_score"]  = max(-1.0, min(1.0, raw))
         s["inflation_signal"] = (
             "Elevated"  if raw >  0.25 else
@@ -161,7 +297,7 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
             "Moderate"
         )
     else:
-        s.update(gold_6m=None, inflation_score=0.0, inflation_signal="—")
+        s.update(inflation_score=0.0, inflation_signal="—")
 
     # ── Dollar ────────────────────────────────────────────────────────────────
     dxy = macro_data.get("Dollar")
@@ -180,47 +316,6 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     oil = macro_data.get("Oil")
     s["oil_3m"] = round((_pct(oil, 3) or 0) * 100, 1) if oil is not None and len(oil) >= 4 else None
 
-    # ── FRED Economic Data signals ────────────────────────────────────────────
-    # Real economic data (CPI, TIPS breakevens, unemployment, industrial production)
-    # that market prices alone cannot provide. When fred_data is absent the model
-    # degrades gracefully to market-price-only signals.
-    _fd = fred_data or {}
-    s["fred_available"] = bool(_fd)
-
-    # CPI: headline vs core divergence — the definitive supply-shock discriminator.
-    # A wide headline-minus-core spread means inflation is in energy/food (supply side),
-    # not in wages/rents/services (structural demand side).
-    _cpi_hl   = _fd.get("CPI Headline")
-    _cpi_core = _fd.get("CPI Core")
-    cpi_hl_yoy   = round((_pct(_cpi_hl,   12) or 0) * 100, 2) if _cpi_hl   is not None and len(_cpi_hl)   >= 13 else None
-    cpi_core_yoy = round((_pct(_cpi_core, 12) or 0) * 100, 2) if _cpi_core is not None and len(_cpi_core) >= 13 else None
-    cpi_spread   = round(cpi_hl_yoy - cpi_core_yoy, 2) if (cpi_hl_yoy is not None and cpi_core_yoy is not None) else None
-    s.update(cpi_headline_yoy=cpi_hl_yoy, cpi_core_yoy=cpi_core_yoy, cpi_spread=cpi_spread)
-
-    # TIPS breakevens: market-implied inflation expectations.
-    # If TIPS haven't repriced despite a commodity spike, bond markets don't believe
-    # the inflation will persist — a strong transient/geopolitical signal.
-    _tips5  = _fd.get("TIPS 5Y")
-    _tips10 = _fd.get("TIPS 10Y")
-    tips_5y       = round(float(_tips5.iloc[-1]),  2) if _tips5  is not None and not _tips5.empty  else None
-    tips_10y      = round(float(_tips10.iloc[-1]), 2) if _tips10 is not None and not _tips10.empty else None
-    tips_5y_3m    = round(_abs(_tips5,  3) or 0, 3)  if _tips5  is not None and len(_tips5)  >= 4  else None
-    tips_10y_3m   = round(_abs(_tips10, 3) or 0, 3)  if _tips10 is not None and len(_tips10) >= 4  else None
-    s.update(tips_5y=tips_5y, tips_10y=tips_10y, tips_5y_3m_chg=tips_5y_3m, tips_10y_3m_chg=tips_10y_3m)
-
-    # Unemployment: rising unemployment contradicts wage-driven inflation
-    # and confirms a demand-shock / labour-market-softening narrative.
-    _unemp = _fd.get("Unemployment")
-    unemp_current = round(float(_unemp.iloc[-1]), 1) if _unemp is not None and not _unemp.empty else None
-    unemp_3m_chg  = round(_abs(_unemp, 3) or 0, 2)  if _unemp is not None and len(_unemp) >= 4  else None
-    s.update(unemployment=unemp_current, unemployment_3m_chg=unemp_3m_chg)
-
-    # Industrial Production: manufacturing activity proxy (PMI-like directional indicator).
-    # Declining INDPRO during an apparent inflationary episode supports supply-shock diagnosis.
-    _indpro = _fd.get("Industrial Prod")
-    indpro_3m = round((_pct(_indpro, 3) or 0) * 100, 2) if _indpro is not None and len(_indpro) >= 4 else None
-    s["indpro_3m"] = indpro_3m
-
     # ── Geopolitical supply-shock filter ──────────────────────────────────────
     # Combines market-price signals (Levels 1-3) with real economic data (Level 4)
     # to detect commodity surges driven by geopolitical events rather than structural
@@ -237,9 +332,15 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     # Level 1: Oil up >15% AND more than 2× gold's 3M move → supply shock fingerprint
     geo_oil_gold = oil_3m_pct > 15 and oil_3m_pct > max(gold_3m_pct, 1.0) * 2.0
 
-    # Level 2: Dollar strengthening while inflation reads elevated → geopolitical risk-off,
-    # not demand inflation (structural inflation is typically dollar-negative or mixed)
-    geo_dxy_infl = infl_sig == "Elevated" and "Strengthening" in dxy_dir
+    # Level 2: Dollar strengthening while inflation reads elevated AND there is already
+    # a commodity divergence signal (Level 1) → risk-off, not demand inflation.
+    # Require Level 1 co-occurrence: a strengthening dollar alone is common mid-cycle
+    # and too weak a filter by itself; it must accompany a commodity fingerprint.
+    geo_dxy_infl = (
+        infl_sig == "Elevated"
+        and "Strengthening" in dxy_dir
+        and geo_oil_gold   # must have the oil/gold divergence to confirm supply-shock
+    )
 
     # Level 3: Is the inflation trend persistent (spread across 6M) or a recent spike (3M dominated)?
     # Persistent = the 3M contribution is ≤60% of the 6M move, meaning it built gradually
@@ -275,10 +376,29 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     s["inflation_signal_raw"] = infl_sig
     geo_adjustment_applied    = False
 
-    # If the warning fires AND inflation is NOT confirmed structural → downgrade the signal
-    if geopolitical_warning and not inflation_persistent and not fred_confirms_structural and infl_sig == "Elevated":
+    # The geo filter was designed to prevent a commodity PRICE SPIKE (oil, gold)
+    # from being misread as structural inflation when using market proxies.
+    # When the primary inflation signal comes from actual FRED CPI data, it is a
+    # direct measurement — 4% headline CPI IS elevated inflation, regardless of
+    # whether it's in energy/food or services. Do not override measured CPI with
+    # a commodity-price heuristic.
+    _using_cpi_primary = s.get("inflation_source") == "FRED CPI (headline)"
+
+    if (geopolitical_warning and not _using_cpi_primary
+            and not inflation_persistent and not fred_confirms_structural
+            and infl_sig == "Elevated"):
         s["inflation_signal"] = "Moderate"
         geo_adjustment_applied = True
+        # Bring score in line: "Moderate" is below the 0.25 Elevated threshold.
+        # Scale the raw score proportionally into [0, 0.24] so the star lands in the
+        # Goldilocks/Moderate area rather than the Inflationary Boom zone.
+        raw_score = s.get("inflation_score", 0.0)
+        # Linear map: (0.25, 1.0) → (0.0, 0.24) so star lands in Moderate zone.
+        # Scores already in the Moderate range (≤ 0.25) just get capped.
+        if raw_score > 0.25:
+            s["inflation_score"] = round(0.24 * (raw_score - 0.25) / 0.75, 3)
+        else:
+            s["inflation_score"] = min(raw_score, 0.24)
 
     _geo_parts: list[str] = []
     if geo_oil_gold:
@@ -317,70 +437,108 @@ def compute_cycle_signals(macro_data: dict, fred_data: dict | None = None) -> di
     s["geo_adjustment_applied"]  = geo_adjustment_applied
     s["geo_shock_detail"]        = " · ".join(_geo_parts) if _geo_parts else ""
 
-    # ── Dalio Cycle Phase ─────────────────────────────────────────────────────
+    # ── Phase probabilities (soft classification) ─────────────────────────────
+    # The economy is never in a perfectly clean quadrant. Hard thresholds always
+    # create boundary artefacts. We compute continuous probabilities using a
+    # logistic/sigmoid weighting: how far is the (growth_score, inflation_score)
+    # position from each zone boundary? Far into a zone → ~100%. On the boundary
+    # → 50% each side. This matches how Dalio's analysts actually present
+    # phase positioning ("60-70% Stagflation, 30-40% Goldilocks").
+    from math import exp as _exp
+
+    def _sig(x, scale=0.12):
+        return 1.0 / (1.0 + _exp(-x / scale))
+
+    # Boundary midpoints match GROW_THR / INFL_THR in charts.py exactly.
+    _GROW_MID = 0.0     # growth at trend = 0; above = Expanding, below = Contracting
+    _INFL_MID = 0.375   # inflation_score where Elevated ↔ Moderate (CPI 3.5%)
+
+    _gs  = s.get("growth_score",    0.0)
+    _ins = s.get("inflation_score", 0.0)
+    _p_exp = _sig(_gs  - _GROW_MID)   # P(growth is in Expanding territory)
+    _p_elv = _sig(_ins - _INFL_MID)   # P(inflation is in Elevated territory)
+
+    phase_probs = {
+        "Inflationary Boom": _p_exp * _p_elv,
+        "Goldilocks":        _p_exp * (1 - _p_elv),
+        "Stagflation":       (1 - _p_exp) * _p_elv,
+        "Deflationary Bust": (1 - _p_exp) * (1 - _p_elv),
+    }
+    # Normalise to 100 (sum guaranteed by construction, but round-trips may drift)
+    _total = sum(phase_probs.values())
+    phase_probs = {k: round(v / _total * 100) for k, v in phase_probs.items()}
+    s["phase_probs"] = phase_probs
+
+    # Sorted for display (highest to lowest)
+    _sorted_phases = sorted(phase_probs, key=phase_probs.get, reverse=True)
+    _primary   = _sorted_phases[0]
+    _secondary = _sorted_phases[1]
+    _primary_pct   = phase_probs[_primary]
+    _secondary_pct = phase_probs[_secondary]
+
+    # ── Hard phase determination ───────────────────────────────────────────────
+    # Use discrete growth/inflation signals for the canonical label, but fall back
+    # to the probabilistic top phase when signals are ambiguous ("Flat" growth).
     growth    = s.get("growth_signal",    "—")
     inflation = s.get("inflation_signal", "—")
 
-    if growth == "Expanding" and inflation in ("Contained", "Moderate"):
-        s.update(
-            cycle_phase  = "Goldilocks",
-            cycle_icon   = "🌤",
-            cycle_color  = "#10b981",
-            cycle_desc   = (
-                "Strong growth with contained inflation — the ideal environment for risk assets. "
+    _PHASE_META = {
+        "Goldilocks": dict(
+            cycle_phase="Goldilocks", cycle_icon="🌤", cycle_color="#10b981",
+            cycle_desc=(
+                "Above-trend growth with contained inflation — the ideal environment for risk assets. "
                 "Equities, especially growth and high-beta names, tend to outperform."
             ),
-            cycle_stocks = "Growth stocks, Technology, Consumer Discretionary",
-            cycle_bonds  = "Bonds flat to negative. Equities preferred over fixed income.",
-        )
-    elif growth == "Expanding" and inflation == "Elevated":
-        s.update(
-            cycle_phase  = "Inflationary Boom",
-            cycle_icon   = "🔥",
-            cycle_color  = "#f59e0b",
-            cycle_desc   = (
+            cycle_stocks="Growth stocks, Technology, Consumer Discretionary",
+            cycle_bonds="Bonds flat to negative. Equities preferred over fixed income.",
+        ),
+        "Inflationary Boom": dict(
+            cycle_phase="Inflationary Boom", cycle_icon="🔥", cycle_color="#f59e0b",
+            cycle_desc=(
                 "Growth with rising prices — central banks may tighten aggressively. "
                 "Commodities, energy, and real assets outperform. Equity multiples compress."
             ),
-            cycle_stocks = "Commodities, Energy, Materials, Financials (benefit from rising rates)",
-            cycle_bonds  = "Nominal bonds underperform. Inflation-linked bonds (TIPS) and short-duration preferred.",
-        )
-    elif growth == "Contracting" and inflation == "Elevated":
-        s.update(
-            cycle_phase  = "Stagflation",
-            cycle_icon   = "⚠️",
-            cycle_color  = "#ef4444",
-            cycle_desc   = (
-                "The worst macro scenario: economic slowdown with persistent inflation. "
+            cycle_stocks="Commodities, Energy, Materials, Financials (benefit from rising rates)",
+            cycle_bonds="Nominal bonds underperform. Inflation-linked bonds (TIPS) and short-duration preferred.",
+        ),
+        "Stagflation": dict(
+            cycle_phase="Stagflation", cycle_icon="⚠️", cycle_color="#ef4444",
+            cycle_desc=(
+                "Below-trend growth with persistent inflation — the most difficult macro environment. "
                 "Very difficult for equities. Hard assets (gold, commodities) are relative safe havens."
             ),
-            cycle_stocks = "Defensive sectors (Utilities, Healthcare, Consumer Staples), Gold, Commodities",
-            cycle_bonds  = "Traditional bonds underperform. Short-duration and inflation-linked preferred.",
-        )
-    elif growth == "Contracting":
-        s.update(
-            cycle_phase  = "Deflationary Bust",
-            cycle_icon   = "❄️",
-            cycle_color  = "#6366f1",
-            cycle_desc   = (
-                "Recession risk or contraction with falling inflation. Flight to quality. "
+            cycle_stocks="Defensive sectors (Utilities, Healthcare, Consumer Staples), Gold, Commodities",
+            cycle_bonds="Traditional bonds underperform. Short-duration and inflation-linked preferred.",
+        ),
+        "Deflationary Bust": dict(
+            cycle_phase="Deflationary Bust", cycle_icon="❄️", cycle_color="#6366f1",
+            cycle_desc=(
+                "Recession risk with falling inflation. Flight to quality. "
                 "Long-duration government bonds, gold, and defensive equities outperform."
             ),
-            cycle_stocks = "Defensive sectors, Quality bonds, Gold — avoid cyclicals and high-beta names",
-            cycle_bonds  = "Government bonds rally strongly. Long-duration bonds favoured.",
-        )
+            cycle_stocks="Defensive sectors, Quality bonds, Gold — avoid cyclicals and high-beta names",
+            cycle_bonds="Government bonds rally strongly. Long-duration bonds favoured.",
+        ),
+    }
+
+    if growth == "Expanding" and inflation in ("Contained", "Moderate"):
+        s.update(_PHASE_META["Goldilocks"])
+    elif growth == "Expanding" and inflation == "Elevated":
+        s.update(_PHASE_META["Inflationary Boom"])
+    elif growth == "Contracting" and inflation == "Elevated":
+        s.update(_PHASE_META["Stagflation"])
+    elif growth == "Contracting":
+        s.update(_PHASE_META["Deflationary Bust"])
     else:
-        s.update(
-            cycle_phase  = "Transition",
-            cycle_icon   = "⚖️",
-            cycle_color  = "#94a3b8",
-            cycle_desc   = (
-                "Mixed signals — the cycle phase is unclear. "
-                "Maintain diversification and avoid large concentrated bets."
-            ),
-            cycle_stocks = "Balanced allocation. No strong directional conviction.",
-            cycle_bonds  = "Balanced bond/equity mix.",
+        # Growth is "Flat" — signals are mixed. Use the highest-probability phase
+        # rather than the uninformative "Transition" label.
+        s.update(_PHASE_META[_primary])
+        s["cycle_desc"] = (
+            f"Signals are mixed. Probabilistic positioning: "
+            f"**{_primary} ({_primary_pct}%)** / {_secondary} ({_secondary_pct}%). "
+            + _PHASE_META[_primary]["cycle_desc"]
         )
+        s["phase_mixed"] = True
 
     # ── Cycle maturity assessment ─────────────────────────────────────────────
     s.update(_assess_maturity(s, macro_data))
@@ -442,7 +600,10 @@ def _compute_big_cycle(s: dict, fred_data: dict) -> dict:
     if rate_nominal is not None and tips_10y_val is not None:
         real_rate = round(rate_nominal - tips_10y_val, 2)
     elif rate_nominal is not None:
-        real_rate = round(rate_nominal - 2.5, 2)  # fallback: assume 2.5% expected inflation
+        # Use CPI core YoY from FRED if available; long-run average (2.5%) only if FRED absent
+        cpi_core = s.get("cpi_core_yoy")
+        assumed_infl = cpi_core if cpi_core is not None else 2.5
+        real_rate = round(rate_nominal - assumed_infl, 2)
     else:
         real_rate = None
     bc["bc_real_rate"] = real_rate
@@ -685,7 +846,7 @@ def _assess_maturity(s: dict, macro_data: dict) -> dict:
     elif phase == "Inflationary Boom":
         # Late signs: growth rolling over, rates very high, labour market softening,
         # core CPI entrenched (means Fed has no off-ramp — tightening must continue)
-        growth_fading = sp_3m < 0 and sp_6m_val > -0.03   # recent months flipping negative
+        growth_fading = sp_3m < 0 and sp_6m_val > -0.05   # recent months flipping negative
         late_count  = sum([rate_high and rate_rising, growth_fading or growth_decelerating,
                            vix_rising, cpi_core_high, unrate_rising])
         # Early signs: growth still strong, rates not yet biting, industrial activity healthy

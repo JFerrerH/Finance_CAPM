@@ -849,13 +849,18 @@ def plot_dalio_quadrant(growth_score: float, inflation_score: float,
     """
     fig = go.Figure()
 
-    # Background rectangles for each quadrant
+    # Zone boundaries derived directly from the signal thresholds in macro.py.
+    # GROW_THR = 0.0:   growth_score is deviation from INDPRO's own trend.
+    #                    Zero = at trend. Positive = above trend. Negative = below.
+    # INFL_THR = 0.375: headline CPI 3.5% → score = (3.5-2.0)/4.0 = 0.375
+    GROW_THR = 0.0
+    INFL_THR = 0.375
     zones = [
-        # x0, y0, x1, y1, fill,                          label
-        (-1.1, 0,    0,    1.1, "rgba(99,102,241,0.12)",  "DEFLATIONARY BUST"),
-        (0,    0,    1.1,  1.1, "rgba(245,158,11,0.12)",  "INFLATIONARY BOOM"),
-        (-1.1, -1.1, 0,    0,   "rgba(16,185,129,0.12)",  "GOLDILOCKS"),
-        (0,   -1.1,  1.1,  0,   "rgba(239,68,68,0.12)",   "STAGFLATION"),
+        # x0,      y0,       x1,   y1,   fill,                          label
+        (-1.1,     INFL_THR, GROW_THR, 1.1,  "rgba(239,68,68,0.12)",   "STAGFLATION"),
+        (GROW_THR, INFL_THR, 1.1,      1.1,  "rgba(245,158,11,0.12)",  "INFLATIONARY BOOM"),
+        (-1.1,    -1.1,  GROW_THR, INFL_THR, "rgba(99,102,241,0.12)",  "DEFLATIONARY BUST"),
+        (GROW_THR,-1.1,  1.1,      INFL_THR, "rgba(16,185,129,0.12)",  "GOLDILOCKS"),
     ]
     for x0, y0, x1, y1, fill, label in zones:
         fig.add_shape(type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
@@ -867,9 +872,9 @@ def plot_dalio_quadrant(growth_score: float, inflation_score: float,
             font=dict(size=10, color="rgba(200,200,200,0.55)"),
         )
 
-    # Axis dividers
-    fig.add_hline(y=0, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
-    fig.add_vline(x=0, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
+    # Divider lines at the actual signal thresholds
+    fig.add_hline(y=INFL_THR, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
+    fig.add_vline(x=GROW_THR, line_dash="dash", line_color="rgba(150,150,150,0.35)", line_width=1)
 
     # Current position
     fig.add_trace(go.Scatter(
@@ -888,14 +893,16 @@ def plot_dalio_quadrant(growth_score: float, inflation_score: float,
     fig.update_layout(
         title=dict(text="Economic Cycle Positioning — Dalio Framework", font=dict(size=13)),
         xaxis=dict(
-            title="← Contracting  |  Growth  |  Expanding →",
+            title="← Below Trend  |  Growth vs Trend  |  Above Trend →",
             range=[-1.15, 1.15], zeroline=False, showgrid=False,
             tickvals=[-1, -0.5, 0, 0.5, 1],
+            ticktext=["-1", "-0.5", "At Trend", "0.5", "1"],
         ),
         yaxis=dict(
-            title="← Deflationary  |  Inflation  |  Elevated →",
+            title="Inflation",
             range=[-1.15, 1.15], zeroline=False, showgrid=False,
-            tickvals=[-1, -0.5, 0, 0.5, 1],
+            tickvals=[-1, -0.5, 0, 0.375, 0.5, 1],
+            ticktext=["-1", "-0.5", "0", "▲ CPI>3.5%", "0.5", "1"],
         ),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,

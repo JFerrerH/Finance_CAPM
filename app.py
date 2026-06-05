@@ -26,7 +26,7 @@ from utils.valuation import (
     calculate_lynch_fair_value,
 )
 from utils.macro import get_macro_data, compute_cycle_signals, macro_implication, compute_short_cycle_path
-from utils.fred import get_economic_data, get_big_cycle_history
+from utils.fred import get_economic_data, get_big_cycle_history, FRED_SERIES
 from utils.scoring import (
     score_alpha, score_risk_return, score_momentum,
     score_financial_health, score_valuation, score_macro_fit,
@@ -711,7 +711,8 @@ elif page == "📍  Thesis":
     start_macro = (datetime.date.today() - datetime.timedelta(days=730)).isoformat()
     macro_data  = get_macro_data(start_macro, today_str)
     fred_api_key = st.secrets.get("fred", {}).get("api_key", "")
-    fred_data   = get_economic_data(fred_api_key, start_macro, today_str) if fred_api_key else {}
+    _sv = ",".join(sorted(FRED_SERIES.keys()))   # cache-bust when series list changes
+    fred_data   = get_economic_data(fred_api_key, start_macro, today_str, _sv) if fred_api_key else {}
     signals     = compute_cycle_signals(macro_data, fred_data)
     cycle_phase = signals.get("cycle_phase", "Transition")
 
@@ -1035,7 +1036,8 @@ elif page == "🌍  Macro":
     with st.spinner("Loading macro data…"):
         macro_data   = get_macro_data(start_macro, today_str)
         fred_api_key = st.secrets.get("fred", {}).get("api_key", "")
-        fred_data    = get_economic_data(fred_api_key, start_macro, today_str) if fred_api_key else {}
+        _sv = ",".join(sorted(FRED_SERIES.keys()))
+        fred_data    = get_economic_data(fred_api_key, start_macro, today_str, _sv) if fred_api_key else {}
         bc_history   = get_big_cycle_history(fred_api_key) if fred_api_key else {}
 
     if not macro_data:
@@ -1130,18 +1132,61 @@ elif page == "🌍  Macro":
 
     with desc_col:
         phase_color = signals["cycle_color"]
-        st.markdown(f"""
-        <div class="cycle-desc-card" style="background:{phase_color}18; border-left: 4px solid {phase_color};">
-            <div class="cycle-desc-phase" style="color:{phase_color};">
-                {signals.get('cycle_icon','')} {signals['cycle_phase']}
-            </div>
-            <div class="cycle-desc-text">{signals['cycle_desc']}</div>
-            <div class="cycle-desc-pos">
-                <b>Equity positioning:</b> {signals.get('cycle_stocks','—')}<br>
-                <b>Bond positioning:</b> {signals.get('cycle_bonds','—')}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        mixed_note  = " *(mixed signals)*" if signals.get("phase_mixed") else ""
+        st.markdown(
+            f"### {signals.get('cycle_icon','')} {signals['cycle_phase']}{mixed_note}",
+            unsafe_allow_html=False,
+        )
+        st.markdown(signals["cycle_desc"])
+        st.caption(
+            f"**Equity:** {signals.get('cycle_stocks','—')}  \n"
+            f"**Bonds:** {signals.get('cycle_bonds','—')}"
+        )
+
+        # Phase confidence bars — native Streamlit, no raw HTML
+        _probs = signals.get("phase_probs", {})
+        if _probs:
+            st.markdown("**Phase confidence**")
+            _PHASE_ICONS = {
+                "Goldilocks": "🌤", "Inflationary Boom": "🔥",
+                "Stagflation": "⚠️", "Deflationary Bust": "❄️",
+            }
+            for _ph, _pct in sorted(_probs.items(), key=lambda x: x[1], reverse=True):
+                st.progress(_pct / 100, text=f"{_PHASE_ICONS.get(_ph,'')} {_ph}: **{_pct}%**")
+
+    # ── Signal inputs diagnostic ──────────────────────────────────────────────
+    with st.expander("📊 What's driving these signals?", expanded=False):
+        _d1, _d2, _d3 = st.columns(3)
+        with _d1:
+            st.markdown("**Inflation inputs**")
+            st.caption(f"Source: {signals.get('inflation_source', 'Gold proxy (no FRED)')}")
+            if signals.get("cpi_headline_yoy") is not None:
+                st.metric("CPI Headline YoY", f"{signals['cpi_headline_yoy']:.1f}%")
+            if signals.get("cpi_core_yoy") is not None:
+                st.metric("CPI Core YoY", f"{signals['cpi_core_yoy']:.1f}%")
+            st.metric("Inflation signal", signals.get("inflation_signal", "—"))
+            st.metric("Inflation score", f"{ins:+.3f}")
+        with _d2:
+            st.markdown("**Growth inputs**")
+            st.caption(f"Source: {signals.get('growth_source', '—')}")
+            if signals.get("gdp_yoy") is not None:
+                st.metric("Real GDP YoY", f"{signals['gdp_yoy']:+.2f}%")
+            if signals.get("gdp_vs_trend") is not None:
+                st.metric("GDP vs Trend", f"{signals['gdp_vs_trend']:+.2f}%",
+                          help=f"Structural trend: {signals.get('gdp_trend_ann','?'):.1f}% annual")
+            if signals.get("sp_6m") is not None:
+                st.metric("S&P 500 6M (display)", f"{signals['sp_6m']:+.1f}%")
+            st.metric("Growth signal", signals.get("growth_signal", "—"))
+            st.metric("Growth score", f"{gs:+.3f}")
+        with _d3:
+            st.markdown("**Data availability**")
+            st.metric("FRED data", "✅ Live" if signals.get("fred_available") else "❌ No key")
+            if signals.get("unemployment") is not None:
+                st.metric("Unemployment", f"{signals['unemployment']:.1f}%")
+            if signals.get("geo_adjustment_applied"):
+                st.warning("Geopolitical filter adjusted inflation signal")
+            elif signals.get("geopolitical_warning"):
+                st.info("Geopolitical warning detected (not applied)")
 
     # ── Short cycle trajectory ────────────────────────────────────────────────
     if not cycle_path.empty:

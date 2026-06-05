@@ -32,14 +32,15 @@ FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 # (series_id, frequency): 'm' = monthly, 'd' = daily, 'q' = quarterly
 # Daily and quarterly series are resampled to month-end for consistency.
 FRED_SERIES: dict[str, tuple[str, str]] = {
-    # Short-cycle / geopolitical filter
-    "CPI Headline":    ("CPIAUCSL",      "m"),
-    "CPI Core":        ("CPILFESL",      "m"),
-    "Unemployment":    ("UNRATE",        "m"),
-    "TIPS 5Y":         ("T5YIE",         "d"),
+    # ── Short-cycle: the two canonical Dalio axes ─────────────────────────────
+    "Real GDP":        ("GDPC1",         "q"),   # Real GDP — the actual growth measure
+    "CPI Headline":    ("CPIAUCSL",      "m"),   # Headline CPI — the actual inflation measure
+    "CPI Core":        ("CPILFESL",      "m"),   # Core CPI (supplementary, geo filter)
+    "Unemployment":    ("UNRATE",        "m"),   # Labour market health (supplementary)
+    "TIPS 5Y":         ("T5YIE",         "d"),   # Inflation expectations (geo filter)
     "TIPS 10Y":        ("T10YIE",        "d"),
-    "Industrial Prod": ("INDPRO",        "m"),
-    # Big Cycle (Dalio long-term debt cycle)
+    "Industrial Prod": ("INDPRO",        "m"),   # Manufacturing activity (supplementary)
+    # ── Big Cycle (Dalio long-term debt cycle) ────────────────────────────────
     "Debt/GDP":        ("GFDEGDQ188S",   "q"),   # Federal Debt as % of GDP
     "M2":              ("M2SL",          "m"),   # M2 Money Supply
     "Fed Funds":       ("FEDFUNDS",      "m"),   # Effective Federal Funds Rate
@@ -89,11 +90,15 @@ def get_big_cycle_history(api_key: str) -> dict:
 
 
 @st.cache_data(ttl=86_400, show_spinner=False)
-def get_economic_data(api_key: str, start: str, end: str) -> dict:
+def get_economic_data(api_key: str, start: str, end: str,
+                      series_version: str = "") -> dict:
     """
     Fetches each FRED series and returns {name: pd.Series} indexed by month-end dates.
     Returns an empty dict when the api_key is blank or every fetch fails —
     the rest of the app degrades gracefully to market-price-only signals.
+
+    series_version is a hash of FRED_SERIES keys — changing it busts the cache
+    so new series (like GDPC1) are fetched immediately without manual cache clear.
     """
     if not api_key:
         return {}
